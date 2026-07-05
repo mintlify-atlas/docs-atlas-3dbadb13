@@ -1,0 +1,91 @@
+---
+title: "Install ERPNext Mexico Compliance on Frappe Bench"
+sidebarTitle: "Installation"
+description: "Step-by-step guide to installing ERPNext Mexico Compliance via Frappe Bench CLI or Frappe Cloud on an existing ERPNext instance."
+---
+
+This guide covers both self-hosted Frappe Bench and Frappe Cloud installation paths for ERPNext Mexico Compliance. Choose the method that matches your deployment. In both cases the app is fetched from the [TI Sin Problemas GitHub repository](https://github.com/TI-Sin-Problemas/erpnext_mexico_compliance) and registered with your ERPNext site.
+
+<Note>
+  ERPNext Mexico Compliance requires **Frappe Framework >= 16.0.0** and **ERPNext >= 16.0.0** to already be installed and running on your site. The app will not install on earlier versions.
+</Note>
+
+## Frappe Cloud
+
+Frappe Cloud handles dependency resolution and app installation through a guided UI. No command-line access is required.
+
+<Steps>
+  <Step title="Sign up or log in to Frappe Cloud">
+    Go to [frappecloud.com](https://frappecloud.com/) and sign in to your account. If you do not have an account, register and provision a site with Frappe Framework 16 and ERPNext 16 selected.
+  </Step>
+  <Step title="Navigate to your site dashboard">
+    From the Frappe Cloud dashboard, select the site on which you want to install ERPNext Mexico Compliance.
+  </Step>
+  <Step title="Open the Apps tab and install">
+    Click the **Apps** tab on your site dashboard, then click **Install App**. Search for `erpnext_mexico_compliance` and select it from the results. Frappe Cloud will install the app and run all required migrations automatically.
+  </Step>
+</Steps>
+
+For detailed Frappe Cloud app installation instructions, refer to the [Frappe Cloud documentation](https://frappecloud.com/docs/installing-an-app).
+
+## Self-hosted (Frappe Bench)
+
+For self-hosted instances managed with the `bench` CLI, follow these steps on the server that hosts your Frappe Bench environment.
+
+<Steps>
+  <Step title="Download the app into your bench">
+    Run the following command from your bench directory to fetch ERPNext Mexico Compliance from GitHub. The `--branch version-15` flag targets the stable release branch.
+
+    ```bash
+    bench get-app https://github.com/TI-Sin-Problemas/erpnext_mexico_compliance.git --branch version-15
+    ```
+
+    Bench will clone the repository into the `apps/` directory and install all Python dependencies declared in `pyproject.toml` — including `satcfdi==4.9.25` and `lxml==6.1.1` — into the bench virtual environment.
+  </Step>
+  <Step title="Install the app on your site">
+    Replace `<site-name>` with the actual name of your Frappe site (e.g. `mycompany.localhost`):
+
+    ```bash
+    bench --site <site-name> install-app erpnext_mexico_compliance
+    ```
+
+    This command runs the app's DocType migrations, applies all Custom Field and Property Setter fixtures, and registers the scheduled jobs with the Frappe scheduler.
+  </Step>
+  <Step title="Restart bench workers (if running in production)">
+    If your bench is running in supervisor-managed production mode, restart the workers so the new scheduler event is picked up:
+
+    ```bash
+    bench restart
+    ```
+
+    Development installs using `bench start` do not require an explicit restart.
+  </Step>
+</Steps>
+
+## Verify installation
+
+After installation, confirm the app is active on your site:
+
+1. Open ERPNext Desk in your browser.
+2. Click the **Apps** icon (or navigate to **Settings → Installed Apps**).
+3. Verify `erpnext_mexico_compliance` appears in the list with status **Installed**.
+4. In the Desk search bar, type **Mexico Compliance** — the module's workspace should appear, giving you access to Digital Signing Certificate, CFDI Stamping Settings, and all SAT catalog DocTypes.
+
+You can also confirm the installation from the command line:
+
+```bash
+bench --site <site-name> list-apps
+```
+
+The output should include `erpnext_mexico_compliance` alongside `frappe` and `erpnext`.
+
+## Dependencies
+
+ERPNext Mexico Compliance declares the following Python packages as direct dependencies. They are installed automatically by `bench get-app` and do not require manual intervention:
+
+| Package | Version | Purpose |
+| --- | --- | --- |
+| `satcfdi` | `==4.9.25` | CFDI 4.0 XML generation and SAT certificate handling |
+| `lxml` | `==6.1.1` | XML serialization and parsing required by `satcfdi` |
+
+These packages are pinned to exact versions to ensure reproducible behavior with the SAT signing libraries. Do not upgrade them independently without verifying compatibility with the app.

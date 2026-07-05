@@ -1,0 +1,84 @@
+---
+title: "CFDI 4.0 Stamping in ERPNext: How It Works"
+sidebarTitle: "Overview"
+description: "Learn how ERPNext Mexico Compliance generates, signs, and stamps CFDI 4.0 documents by connecting ERPNext to the TI Sin Problemas web service."
+---
+
+A **Comprobante Fiscal Digital por Internet (CFDI)** is the legally required digital fiscal document that every Mexican business must issue when recording a sale or receiving a payment. The SAT (Servicio de Administración Tributaria) mandates that each CFDI be signed with the issuer's **CSD** (Certificado de Sello Digital) and then **stamped** — validated and timestamped — by an authorized certification provider (PAC) before it is considered legally valid.
+
+ERPNext Mexico Compliance handles this entire lifecycle from inside ERPNext. When you submit a Sales Invoice or Payment Entry, the app assembles the CFDI 4.0 XML, signs it with your CSD, sends it to the TI Sin Problemas web service, and stores the stamped result back on the document.
+
+---
+
+## Stamping flow
+
+<Steps>
+  <Step title="Assemble the CFDI voucher">
+    The app reads the ERPNext document (Sales Invoice or Payment Entry) and builds a `cfdi40.Comprobante` object using the `satcfdi` library. All required SAT catalog codes — tax regime, payment method, product/service keys — are resolved from their corresponding ERPNext master data.
+  </Step>
+  <Step title="Sign with CSD">
+    The `sign_cfdi` method loads the **Digital Signing Certificate** DocType, calls `voucher.sign(csd.signer)`, and processes the result into a signed CFDI object ready for transmission.
+  </Step>
+  <Step title="Send to the web service">
+    The signed XML is posted to the `tisp_apps.api.v1.cfdi.stamp` endpoint via the `APIClient` class. The web service forwards the document to the SAT's authorized PAC and returns the stamped XML.
+  </Step>
+  <Step title="Receive and store the stamped XML">
+    On success, the web service response contains the full stamped XML, which includes the SAT's `TimbreFiscalDigital` complement. The app stores the XML in `mx_stamped_xml` and extracts the UUID into `mx_uuid` on the document. The `mx_cfdi_status` field is set to **Valid**.
+  </Step>
+</Steps>
+
+---
+
+## Supported document types
+
+<CardGroup cols={2}>
+  <Card title="Sales Invoice — Ingreso" icon="file-invoice">
+    Standard customer invoices are stamped as CFDI **Tipo Ingreso** (`TipoDeComprobante.INGRESO`). Each line item maps to a `Concepto` element with SAT product/service and UOM keys.
+  </Card>
+  <Card title="Payment Entry — Pago 2.0" icon="money-bill-wave">
+    Customer payment receipts are stamped as CFDI **Complemento de Pago 2.0** (`pago20`). Each referenced Sales Invoice becomes a `DoctoRelacionado` element inside the `Pagos` complement.
+  </Card>
+</CardGroup>
+
+---
+
+## CFDI status lifecycle
+
+Once a document is stamped, its `mx_cfdi_status` field tracks its standing with the SAT. The three possible states come from the `CFDIStatus` enum in `controllers/common.py`:
+
+| Status | Meaning |
+|---|---|
+| **Valid** | The CFDI has been accepted by the SAT and is legally active. |
+| **Pending Cancellation** | A cancellation request has been submitted to the SAT and is awaiting approval. The ERPNext document is still open at this stage. |
+| **Cancelled** | The SAT has confirmed the cancellation. ERPNext automatically cancels the document when this status is detected. |
+
+<Note>
+  The transition from **Pending Cancellation** to **Cancelled** is handled by the `check_cancellation_status` scheduled job, which runs hourly and polls the web service for any approved cancellations.
+</Note>
+
+---
+
+## Web service
+
+The app communicates with the TI Sin Problemas CFDI web service through the `APIClient` class (`ws_client/client.py`), which extends Frappe's `FrappeClient`. All requests are authenticated with the API Key and API Secret you configure in **CFDI Stamping Settings**.
+
+The three core API endpoints used are:
+
+| Endpoint | Purpose |
+|---|---|
+| `tisp_apps.api.v1.cfdi.stamp` | Submit a signed XML for PAC stamping; returns the stamped XML. |
+| `tisp_apps.api.v1.cfdi.cancel` | Submit a cancellation request to the SAT; returns the ACK XML. |
+| `tisp_apps.api.v1.cfdi.status` | Query the current SAT status of a stamped CFDI by UUID. |
+
+The client also calls `tisp_apps.api.v1.cfdi.subscription_details` to check available stamp credits, which is exposed in ERPNext via the **Available Credits** button in CFDI Stamping Settings.
+
+---
+
+## Requirements summary
+
+Before any document can be stamped, all of the following must be in place:
+
+- **Digital Signing Certificate (CSD)** — at least one CSD must be uploaded for the Company issuing the document. Navigate to *Mexico Compliance → Digital Signing Certificate* to add one.
+- **API credentials** — an API Key and API Secret must be entered in *Mexico Compliance → CFDI Stamping Settings*. These are issued when you purchase a stamp package from TI Sin Problemas.
+- **Stamp credits** — each successful stamp consumes one credit from your package. Check your balance via the **Available Credits** button in CFDI Stamping Settings.
+- **Valid master data** — the Company address, Customer RFC, tax regimes, SAT catalog keys for items and UOMs, and payment method codes must all be correctly configured before attempting to stamp. Specific per-document-type requirements are detailed in the Sales Invoice and Payment Entry pages.

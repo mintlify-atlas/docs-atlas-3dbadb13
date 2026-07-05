@@ -1,47 +1,110 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get Started with CFDI Stamping in ERPNext"
+sidebarTitle: "Quickstart"
+description: "Configure your Digital Signing Certificate and CFDI Stamping Settings, then stamp your first Sales Invoice in under 10 minutes."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
+This guide takes you from a freshly installed ERPNext Mexico Compliance app to a fully stamped CFDI Sales Invoice. You will configure your Digital Signing Certificate (CSD), connect to the TI Sin Problemas stamping service, verify your master data, and issue your first CFDI — all without leaving ERPNext Desk.
 
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
-
-## Prerequisites
-
-Before you begin, you must have:
-
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
-
-## Get started
+<Warning>
+  CFDI stamping requires an active package of stamp credits and API credentials (API Key and API Secret) issued by TI Sin Problemas. To purchase a package, send an email to [info@tisinproblemas.com](mailto:info@tisinproblemas.com). You will receive your API Key and API Secret together with your stamp package confirmation.
+</Warning>
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
+  <Step title="Add a Digital Signing Certificate">
+    The SAT requires every CFDI to be digitally signed using a valid *Certificado de Sello Digital* (CSD) issued to your company. You must upload this certificate to ERPNext before any invoice can be stamped.
 
-    ```bash
-    npm install your-package
-    ```
+    1. In ERPNext Desk, navigate to **Mexico Compliance → Digital Signing Certificate**.
+    2. Click **New**.
+    3. In the **Company** field, select the company that will issue the CFDI documents.
+    4. In the **Certificate File (.cer)** field, attach your `.cer` certificate file issued by the SAT.
+    5. In the **Certificate Key File (.key)** field, attach your `.key` private key file.
+    6. Enter the **Certificate Key Password** that protects your `.key` file.
+    7. Click **Save**.
+
+    <Tip>
+      Each company in ERPNext requires its own Digital Signing Certificate. If you operate multiple companies under one ERPNext instance, add a separate certificate record for each one.
+    </Tip>
   </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
 
-    ```bash
-    your-cli init
-    ```
+  <Step title="Configure CFDI Stamping Settings">
+    CFDI Stamping Settings is the central configuration DocType that connects ERPNext to the TI Sin Problemas stamping web service.
+
+    1. Navigate to **Mexico Compliance → CFDI Stamping Settings**.
+    2. Enter your **API Key** in the corresponding field.
+    3. Enter your **API Secret** in the corresponding field.
+    4. If you are configuring a production environment, **uncheck the Test Mode checkbox**. Leave Test Mode enabled while you are validating your setup in a non-production site.
+    5. Optionally, enable **Stamp on Submit** if you want Sales Invoices to be stamped automatically the moment they are submitted, without requiring a manual button click.
+    6. Click **Save**.
   </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
 
-    ```bash
-    your-cli start
-    ```
+  <Step title="Check available credits">
+    Before stamping invoices, confirm that your account has sufficient credits.
+
+    1. In **Mexico Compliance → CFDI Stamping Settings**, click the **Available Credits** button.
+    2. The current credit balance for your API account will be displayed.
+
+    If your credit balance is zero or insufficient, contact [info@tisinproblemas.com](mailto:info@tisinproblemas.com) to top up your account.
+  </Step>
+
+  <Step title="Prepare your master data">
+    The SAT requires specific catalog codes on every CFDI line item. Before stamping your first invoice, verify that the following records are configured correctly in ERPNext:
+
+    | Record | Required field | Where to set it |
+    | --- | --- | --- |
+    | **Customer** | Valid RFC (Tax ID) | Customer → Tax ID |
+    | **Customer** | SAT Tax Regime | Customer → SAT Tax Regime |
+    | **Customer Address** | Zip Code | Address linked to the Customer |
+    | **Company Address** | Zip Code | Address linked to the Company |
+    | **Item** | SAT Product or Service Key | Item → SAT Product or Service Key |
+    | **UOM** | SAT UOM Key | UOM → SAT UOM Key |
+    | **Mode of Payment** | SAT Payment Method | Mode of Payment → SAT Payment Method |
+
+    All SAT catalog values (Tax Regime, Product/Service Key, UOM Key, Payment Method) are available as linked fields pointing to the SAT catalog DocTypes that ship with the app. Use the search on each field to find the correct SAT code for your use case.
+
+    <Note>
+      The Sales Invoice itself also requires a **SAT Payment Option** (Método de pago SAT) and a **SAT CFDI Use** field. These can be set directly on the invoice or defaulted from the Customer record.
+    </Note>
+  </Step>
+
+  <Step title="Stamp a Sales Invoice">
+    With configuration and master data in place, you can stamp your first CFDI.
+
+    **If auto-stamp on submit is enabled:**
+    1. Create and complete a Sales Invoice as normal.
+    2. Click **Submit**. The app will automatically call the stamping service after submission. The **Stamped XML** field on the invoice will be populated with the signed CFDI XML returned by the SAT.
+
+    **If auto-stamp is not enabled:**
+    1. Create, complete, and submit a Sales Invoice.
+    2. On the submitted invoice form, click the **Stamp CFDI** button.
+    3. The app sends the invoice data to the TI Sin Problemas stamping service, which returns the SAT-sealed XML. The **Stamped XML** field is updated with the result.
+
+    A successfully stamped invoice will display the SAT UUID (fiscal folio) in the Stamped XML field. One credit is deducted from your account per stamp.
+  </Step>
+
+  <Step title="Download CFDI files">
+    After a Sales Invoice has been stamped, you can retrieve the official CFDI files for your records or to send to your customer.
+
+    1. On the stamped Sales Invoice form, click **Download CFDI Files**.
+    2. ERPNext will package the signed XML file and the PDF representation of the CFDI into a single ZIP archive and prompt you to download it.
+
+    Share the XML file with your customer — Mexican regulations require the XML to be delivered alongside any printed or PDF representation of the invoice.
   </Step>
 </Steps>
 
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
+## Next steps
 
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
-</Tip>
+<CardGroup cols={2}>
+  <Card title="CFDI Overview" icon="file-invoice-dollar" href="cfdi/overview">
+    Learn how CFDI documents are structured, how Sales Invoice and Payment Entry stamping differ, and what data is included in the generated XML.
+  </Card>
+  <Card title="CFDI Cancellation" icon="circle-xmark" href="cfdi/cancellation">
+    Understand the SAT cancellation process, how to provide a cancellation reason and substitute document, and how the hourly status check job keeps your records up to date.
+  </Card>
+  <Card title="Stamping Settings Reference" icon="gear" href="configuration/stamping-settings">
+    Full reference for all fields in CFDI Stamping Settings, including Test Mode behavior, auto-stamp configuration, and API credential management.
+  </Card>
+  <Card title="SAT Catalogs" icon="book" href="catalogs/overview">
+    Browse all SAT catalog DocTypes included with the app — payment methods, tax regimes, product/service keys, units of measure, and cancellation reasons.
+  </Card>
+</CardGroup>

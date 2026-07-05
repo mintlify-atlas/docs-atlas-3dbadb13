@@ -1,0 +1,97 @@
+---
+title: "Add Your Digital Signing Certificate (CSD) to ERPNext"
+sidebarTitle: "Signing Certificate"
+description: "Upload your SAT-issued Digital Signing Certificate (.cer and .key files) to ERPNext to enable CFDI document signing and stamping."
+---
+
+A Digital Signing Certificate (CSD — *Certificado de Sello Digital*) is issued by the Mexican Tax Administration Service (SAT) for each company. It is used to cryptographically sign CFDI documents before they are submitted to the PAC for stamping. Without a valid CSD, no CFDI can be generated.
+
+---
+
+## Prerequisites
+
+Before adding a certificate in ERPNext you must have obtained a valid CSD from the SAT portal at [https://www.sat.gob.mx](https://www.sat.gob.mx) for each company that will issue CFDIs. The SAT will provide you with three items:
+
+- A **`.cer` file** — the public certificate.
+- A **`.key` file** — the encrypted private key.
+- A **password** — used to decrypt the private key.
+
+You need all three to configure a signing certificate in ERPNext. Keep these files and the password secure.
+
+---
+
+## Adding a Digital Signing Certificate
+
+<Steps>
+  <Step title="Open the Digital Signing Certificate list">
+    Go to **Mexico Compliance → Digital Signing Certificate**.
+  </Step>
+  <Step title="Create a new record">
+    Click **New Digital Signing Certificate**.
+  </Step>
+  <Step title="Select the company">
+    In the **Company** field, select the company for which this certificate will
+    be used to sign CFDIs. This field is required.
+  </Step>
+  <Step title="Attach the certificate file">
+    In the **Certificate** field, attach your `.cer` certificate file.
+  </Step>
+  <Step title="Attach the private key file">
+    In the **Key** field, attach your `.key` private key file.
+  </Step>
+  <Step title="Enter the password">
+    In the **Password** field, enter the password that was issued by the SAT to
+    protect your private key.
+  </Step>
+  <Step title="Save">
+    Click **Save**. The app will load and validate the certificate triad
+    (certificate, key, and password) using the `satcfdi` library. If the
+    combination is invalid, an error is raised and the document is not saved.
+  </Step>
+</Steps>
+
+---
+
+## Validating a certificate
+
+After saving, you can use the **Validate Certificate** button on the form to re-run the validation at any time. If the certificate, key, and password are all correct, the app displays a confirmation popup showing the RFC, legal name, and branch name extracted from the certificate.
+
+---
+
+## Auto-naming
+
+Certificates are automatically named using the pattern `{Company}-{##}` — for example, `My Company-001` for the first certificate added for a company, `My Company-002` for the second, and so on. Names can be changed after creation if needed.
+
+---
+
+## Permissions
+
+Access to Digital Signing Certificate records is controlled by role:
+
+| Role | Permissions |
+|---|---|
+| System Manager | Full access: create, read, write, delete, share |
+| Accounts Manager | Full access: create, read, write, delete, share |
+| Accounts User | Read-only access |
+
+<Warning>
+  The private key file (`.key`) and its password are highly sensitive
+  credentials. Only **System Manager** and **Accounts Manager** roles can
+  create or modify certificate records. The **Password** field is stored
+  encrypted in the database, and the `.cer` and `.key` file attachments are
+  marked `no_copy` so they are never duplicated when a record is copied.
+</Warning>
+
+---
+
+## Multiple companies
+
+You can add as many Digital Signing Certificates as needed. Multiple certificates per company are supported — for example, if a company receives a renewed certificate from the SAT before the old one expires.
+
+When **Stamp on submit** is enabled in [CFDI Stamping Settings](/configuration/stamping-settings), the **Default Digital Signing Certificates** table determines which specific certificate is used for each company during automatic stamping. When stamping manually via the **Stamp CFDI** button, you can select any available certificate for the document's company.
+
+---
+
+## Certificate expiry
+
+CSDs have an expiry date set by the SAT. The SAT will reject any stamp request made with an expired certificate. Monitor your certificate's expiry date and renew it through the SAT portal before it expires to avoid interruption to your invoicing workflow.

@@ -1,0 +1,113 @@
+---
+title: "RFC and CURP Validation Utilities"
+sidebarTitle: "Validators"
+description: "Python utility functions for validating Mexican tax identifiers: is_valid_rfc() for RFC validation and is_valid_curp() for CURP validation."
+---
+
+The `controllers.validators` module provides regex-based validators for Mexican government-issued identifiers. These functions are used internally by the app — for example, when saving a Customer (RFC) or an Employee (CURP) — and can be imported directly into any custom Frappe app that needs to validate these identifiers before stamping a CFDI or saving a record.
+
+## is_valid_rfc(rfc: str) → bool
+
+Validates an RFC (Registro Federal de Contribuyentes), the Mexican federal taxpayer registration number issued by the SAT.
+
+**Returns** `True` if the RFC string matches the expected format, `False` otherwise.
+
+### RFC structure
+
+An RFC encodes the taxpayer's name initials and date of birth (or incorporation date for companies) followed by a three-character homologation key:
+
+| Segment | Length | Description |
+|---|---|---|
+| Name initials | 3–4 letters | 3 letters for legal entities; 4 letters for individuals |
+| Birth / incorporation date | 6 digits | `YYMMDD` format |
+| Homologation key | 3 characters | Alphanumeric (`A-Z`, `0-9`) — assigned by the SAT |
+
+- **Legal entities (companies):** 12-character RFC (`3 letters + 6 digits + 3 chars`)
+- **Natural persons (individuals):** 13-character RFC (`4 letters + 6 digits + 3 chars`)
+
+### Usage
+
+```python
+from erpnext_mexico_compliance.controllers.validators import is_valid_rfc
+
+is_valid_rfc("ABC123456789")     # True  — company RFC (12 chars)
+is_valid_rfc("ABCD123456789")    # True  — person RFC (13 chars)
+is_valid_rfc("XAXX010101000")    # True  — generic public RFC (Público en General)
+is_valid_rfc("INVALID")          # False — too short, no date segment
+is_valid_rfc("abc123456789")     # False — lowercase not accepted
+```
+
+### Regex pattern
+
+```python
+r"^([A-ZÑ]|\&){3,4}[0-9]{2}(0[1-9]|1[0-2])([12][0-9]|0[1-9]|3[01])[A-Z0-9]{3}$"
+```
+
+The pattern enforces:
+- Uppercase letters only (`A-Z`, `Ñ`, and `&` for the ampersand used in some company names)
+- A valid month segment (`01`–`12`)
+- A valid day segment (`01`–`31`) — note this is a format check, not a calendar check
+- An alphanumeric homologation key
+
+## is_valid_curp(curp: str) → bool
+
+Validates a CURP (Clave Única de Registro de Población), the 18-character personal identity code assigned by the Mexican government to every citizen and resident.
+
+**Returns** `True` if the CURP string matches the expected format, `False` otherwise.
+
+### CURP structure
+
+| Segment | Length | Description |
+|---|---|---|
+| First letter of first surname | 1 letter | |
+| First internal vowel of first surname | 1 vowel | |
+| First letter of second surname | 1 letter | |
+| First letter of given name | 1 letter | |
+| Date of birth | 6 digits | `YYMMDD` format |
+| Gender | 1 letter | `H` (hombre / male) or `M` (mujer / female) |
+| State of birth | 2 letters | Two-letter SAT state code (e.g. `DF`, `NL`, `JC`) |
+| Internal consonants | 3 consonants | First internal consonant of each surname and given name |
+| Check digits | 2 characters | Homonymy differentiator (alphanumeric) + verification digit |
+
+### Usage
+
+```python
+from erpnext_mexico_compliance.controllers.validators import is_valid_curp
+
+is_valid_curp("GOMC800101HDFNRR09")  # True
+is_valid_curp("gomc800101hdfnrr09")  # False — lowercase not accepted
+is_valid_curp("INVALID")             # False
+```
+
+### Regex pattern
+
+The validator uses a verbose multi-line pattern compiled with `re.VERBOSE`:
+
+```python
+r"""^([A-Z][AEIOUX][A-Z]{2}
+\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])
+[HM]
+(?:AS|B[CS]|C[CLMSH]|D[FG]|G[TR]|HG|JC|M[CNS]|N[ETL]|OC|PL|Q[TR]|S[PLR]|T[CSL]|VZ|YN|ZS)
+[B-DF-HJ-NP-TV-Z]{3}
+[A-Z\d])(\d)$"""
+```
+
+The pattern encodes the complete list of valid two-letter Mexican state codes and restricts the consonant block to true consonants (excluding vowels and special characters).
+
+## is_match(pattern, string, flags=0) → bool
+
+The underlying helper used by both `is_valid_rfc` and `is_valid_curp`. Compiles a regex pattern and returns `True` if the string fully matches it from start to end (`re.match`).
+
+```python
+from erpnext_mexico_compliance.controllers.validators import is_match
+
+is_match(r"^[A-Z]{3}$", "ABC")   # True
+is_match(r"^[A-Z]{3}$", "ABCD")  # False — too long
+is_match(r"^[A-Z]{3}$", "abc")   # False — lowercase
+```
+
+You can use `is_match` directly in custom validators by passing any standard Python regex flags (e.g. `re.IGNORECASE`, `re.VERBOSE`).
+
+<Note>
+These validators enforce **format only** — they verify that the string matches the structural rules defined by the SAT, but they do not check whether the RFC or CURP actually exists in any SAT registry. For RFC existence validation against the SAT, use the CFDI web service's status endpoint.
+</Note>

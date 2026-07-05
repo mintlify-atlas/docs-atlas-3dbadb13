@@ -1,0 +1,119 @@
+---
+title: "Stamp Payment Entries as CFDI Pago 2.0 Documents"
+sidebarTitle: "Payment Entry"
+description: "Stamp ERPNext Payment Entries as CFDI Complemento de Pago 2.0 documents, with requirements, auto-stamp conditions, and related document references."
+---
+
+Payment Entries are stamped as CFDI **Complemento de Pago 2.0** (`pago20`) documents. This complement is required by the SAT when a Sales Invoice is issued with payment method **PPD** (Pago en Parcialidades o Diferido) — meaning payment is received after the invoice date. Each Payment Entry that settles one or more of those invoices must be stamped as a separate CFDI Pago document.
+
+---
+
+## Requirements
+
+All of the following conditions must be satisfied before a Payment Entry can be stamped:
+
+<ul>
+  <li>The **Company** must have a default address with a **Zip Code** (`pincode`).</li>
+  <li>At least **one Digital Signing Certificate** must exist for the Company issuing the payment.</li>
+  <li>You must have available **stamp credits** in your TI Sin Problemas account.</li>
+  <li>All referenced **Sales Invoices must already be stamped** — each must have a non-empty `mx_stamped_xml` and `mx_uuid`.</li>
+  <li>All referenced Sales Invoices must have a **SAT Payment Option of PPD**.</li>
+  <li>The Payment Entry must be of type **Receive** with party type **Customer**.</li>
+  <li>The **Customer** must have a primary address with a **Zip Code**.</li>
+  <li>The **Mode of Payment** must have an SAT payment method code that is not `99` (To be defined). A `99` code is explicitly blocked during validation.</li>
+</ul>
+
+<Warning>
+  Payment Entries that reference document types other than **Sales Invoice** cannot be stamped. The validation step explicitly rejects any reference whose `doctype` is not `Sales Invoice`.
+</Warning>
+
+---
+
+## Auto-stamp conditions
+
+When `stamp_on_submit` is enabled in CFDI Stamping Settings, the Payment Entry override evaluates four conditions at submission time. Auto-stamping only proceeds when **all four** are true simultaneously:
+
+```python
+payment_options = [
+    doc.mx_payment_option if hasattr(doc, "mx_payment_option") else None
+    for doc in self.get_reference_docs()
+]
+conditions = [
+    settings.stamp_on_submit,          # Enabled in CFDI Stamping Settings
+    self.payment_type == "Receive",    # Must be an inbound payment
+    self.party_type == "Customer",     # Must be from a customer
+    all(i == "PPD" for i in payment_options),  # All referenced invoices use PPD
+]
+if all(conditions):
+    csd = frappe.get_value("Default CSD", {"company": self.company}, "csd")
+    try:
+        self.stamp_cfdi(csd)
+    except Exception as e:
+        frappe.msgprint(str(e), title=_("CFDI Stamping Error"))
+```
+
+If any condition is not met (for example, the payment type is **Pay** rather than **Receive**, or one of the invoices uses **PUE** instead of **PPD**), auto-stamping is silently skipped. The payment entry is still submitted normally, and you can stamp it manually afterward.
+
+<Note>
+  As with Sales Invoices, a stamping failure during auto-stamp does not roll back the submission. The entry remains submitted so you can resolve the issue and stamp manually.
+</Note>
+
+---
+
+## Stamping manually
+
+<Steps>
+  <Step title="Submit the Payment Entry">
+    Complete and submit the Payment Entry. All referenced Sales Invoices must already be in **Submitted** and **Stamped** status.
+  </Step>
+  <Step title="Click Stamp CFDI">
+    Once submitted, the **Stamp CFDI** button is available on the form. Click it to begin the stamping process.
+  </Step>
+  <Step title="Select the Digital Signing Certificate">
+    Select the Digital Signing Certificate (CSD) for the Company. Only certificates registered for the payment entry's Company are available.
+  </Step>
+  <Step title="Confirm stamping">
+    The app validates the company address, customer address, and all references, then signs and posts the CFDI to the web service. On success, `mx_stamped_xml`, `mx_uuid`, and `mx_cfdi_status` are populated on the document.
+  </Step>
+</Steps>
+
+---
+
+## CFDI Pago structure
+
+The `get_cfdi_voucher` method on the `PaymentEntry` override builds a `cfdi40.Comprobante` of type **Pago**. The specific construction path depends on whether the payment fully settles all referenced invoices:
+
+**Full-settlement path** (all references: `total_amount == allocated_amount`):
+
+The app calls `cfdi40.Comprobante.pago_comprobantes`, passing the original CFDI objects loaded directly from each referenced invoice's `mx_stamped_xml`. The SAT library computes the payment amounts and balances automatically from the original CFDI data.
+
+**Partial-payment path** (not yet fully supported):
+
+The app attempts to build individual `pago20.DoctoRelacionado` records. Each record carries:
+
+- `id_documento` — the UUID from the referenced invoice's `mx_uuid`.
+- `moneda_dr` — the invoice currency.
+- `num_parcialidad` — the installment number (position of this payment entry in the invoice's payment history).
+- `imp_saldo_ant` — the previous balance (`allocated_amount + outstanding_amount`).
+- `imp_pagado` — the amount allocated in this payment.
+- `serie` / `folio` — the CFDI series and folio of the referenced invoice.
+
+<Warning>
+  Partial payments (where `allocated_amount` differs from `total_amount` for any reference) are not fully supported. The app will throw an error if this condition is detected: *"All references must have the same total amount, partial payments are not supported."*
+</Warning>
+
+---
+
+## Related document fields
+
+The following fields are added to the Payment Entry DocType by the app:
+
+| Field | Description |
+|---|---|
+| `mx_payment_mode` | SAT payment form code sourced from the Mode of Payment's `SAT Payment Method` field. |
+| `mx_stamped_xml` | The full stamped XML returned by the web service, including the `TimbreFiscalDigital` complement. |
+| `mx_uuid` | The UUID extracted from the `TimbreFiscalDigital` complement of the stamped XML. |
+| `mx_cfdi_status` | Current CFDI status: **Valid**, **Pending Cancellation**, or **Cancelled**. |
+| `cancellation_reason` | SAT cancellation reason code (link to the Cancellation Reason DocType). Required before cancelling a stamped entry. |
+| `substitute_payment_entry` | The name of the substitute Payment Entry when cancellation reason `01` is used. |
+| `cancellation_acknowledgement` | The ACK XML returned by the SAT after a cancellation request is accepted. |

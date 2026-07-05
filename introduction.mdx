@@ -1,0 +1,61 @@
+---
+title: "ERPNext Mexico Compliance: SAT CFDI 4.0 for ERPNext"
+sidebarTitle: "Introduction"
+description: "ERPNext Mexico Compliance adds CFDI 4.0 stamping, SAT catalog management, and Mexican tax compliance fields to your ERPNext instance."
+---
+
+ERPNext Mexico Compliance is a Frappe application built on top of ERPNext that adapts your ERP instance to meet the rules and regulations of Mexican fiscal authorities, specifically the *Servicio de Administración Tributaria* (SAT). It is intended for Mexican businesses and ERPNext implementers who need to issue legally valid electronic invoices (CFDI 4.0) directly from ERPNext, without maintaining a separate billing system. The app bridges the gap between standard ERPNext business logic and the Mexican tax framework by adding compliance fields, SAT catalog DocTypes, a web service client to the TI Sin Problemas stamping service, and event hooks for custom integrations.
+
+## How it works
+
+ERPNext Mexico Compliance operates entirely within the Frappe framework. It does not replace ERPNext's core accounting logic — instead, it extends it through a set of focused overrides and additions:
+
+- **DocType overrides** — The app overrides the `Customer`, `Employee`, `Payment Entry`, `Sales Invoice`, and `Sales Invoice Item` DocType classes to inject Mexican compliance behavior. Custom fields (RFC, SAT Tax Regime, SAT Payment Method, Stamped XML, etc.) are added to these and several other DocTypes via Frappe's fixture mechanism, so the fields survive upgrades cleanly.
+
+- **Stamping service client** — When a Sales Invoice or Payment Entry is ready to be stamped, the app serializes the document data into a CFDI 4.0 XML structure using the `satcfdi` library and sends it to the TI Sin Problemas web service for fiscal sealing (*timbrado*). The signed XML (with SAT UUID, digital seal, and QR code) is stored back on the originating document.
+
+- **SAT catalog sync** — Mexican SAT publishes official catalogs for payment methods, tax regimes, product/service keys, and units of measure. ERPNext Mexico Compliance ships these catalogs as Frappe DocTypes and populates them during installation, so all SAT-required codes are available as linked fields across your master data.
+
+- **Scheduled background job** — A Frappe scheduler event runs every hour to poll the SAT cancellation status of any pending Sales Invoice or Payment Entry CFDI cancellation requests, keeping document state current without manual intervention.
+
+## Key capabilities
+
+<CardGroup cols={2}>
+  <Card title="CFDI 4.0 Stamping" icon="file-invoice">
+    Generate and stamp CFDI 4.0 electronic invoices for Sales Invoices and Payment Entries directly from ERPNext. A **Stamp CFDI** button appears on submitted documents, or stamping can be triggered automatically on submission. The signed XML and cancellation acknowledgement are stored on the document.
+  </Card>
+  <Card title="CFDI Cancellation" icon="circle-xmark">
+    Cancel stamped CFDI documents in compliance with SAT requirements. Cancellation reasons and optional substitute document links are captured on Sales Invoices and Payment Entries. The hourly `check_cancellation_status` scheduled job tracks SAT acceptance of cancellation requests automatically.
+  </Card>
+  <Card title="SAT Catalogs" icon="book">
+    Ships all required SAT reference catalogs as native Frappe DocTypes: SAT CFDI Use, SAT Payment Method, SAT Payment Option, SAT Product or Service Key, SAT Tax Regime, SAT UOM Key, and Cancellation Reason. These are linked directly to master data records (Customers, Items, UOMs, Modes of Payment) so lookups are validated at every step.
+  </Card>
+  <Card title="Compliance Fields" icon="list-check">
+    Adds Mexican compliance fields to standard ERPNext DocTypes including Account (Tax Type), Bank Account (CLABE), Company (SAT Tax Regime), Customer (SAT Tax Regime, CFDI Use, Addenda), Item (SAT Product or Service Key), Mode of Payment (SAT Payment Method), UOM (SAT UOM Key), Sales Invoice, Sales Invoice Item, Sales Order Item, Payment Entry, and Subscription.
+  </Card>
+  <Card title="Extensibility Hooks" icon="puzzle-piece">
+    Exposes two document event hooks — `before_stamp_cfdi` and `after_stamp_cfdi` — allowing developers to inject custom logic immediately before and after the CFDI stamping process. Use these hooks to populate custom Addenda XML sections, trigger third-party integrations, or enforce business rules specific to your deployment.
+  </Card>
+  <Card title="Scheduled Jobs" icon="clock">
+    Registers a Frappe hourly scheduler event (`check_cancellation_status`) that automatically polls the stamping service for the SAT cancellation status of Sales Invoices and Payment Entries that have an in-progress cancellation request. No manual polling or cron configuration required.
+  </Card>
+</CardGroup>
+
+## Requirements
+
+Before installing ERPNext Mexico Compliance, ensure your environment meets the following prerequisites:
+
+| Requirement | Version |
+| --- | --- |
+| Frappe Framework | `>=16.0.0, <17.0.0` |
+| ERPNext | `>=16.0.0, <17.0.0` |
+| Python | `>=3.14` |
+| `satcfdi` (Python package) | `==4.9.25` |
+| `lxml` (Python package) | `==6.1.1` |
+| TI Sin Problemas stamp credits | Active package required |
+
+The `satcfdi` and `lxml` Python packages are declared as dependencies in `pyproject.toml` and are installed automatically by Frappe Bench when the app is added. Stamp credits must be purchased separately from TI Sin Problemas — contact [info@tisinproblemas.com](mailto:info@tisinproblemas.com) to obtain a package and your API credentials.
+
+## License
+
+ERPNext Mexico Compliance is released under the [MIT License](https://github.com/TI-Sin-Problemas/erpnext_mexico_compliance/blob/version-15/LICENSE). Contributions via pull requests are welcome. If you would like to help translate the app, join the project on [Crowdin](https://crwd.in/erpnext-mexico-compliance/35a28fa170d6652eeedc5b7dbd064a7a2457550).

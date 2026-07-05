@@ -1,72 +1,102 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mintlify Starter Kit",
+  "name": "ERPNext Mexico Compliance",
+  "theme": "maple",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
-  },
-  "favicon": "/favicon.svg",
-  "navigation": {
-    "pages": [
-      {
-        "group": "Getting Started",
-        "pages": [
-          "index",
-          "quickstart"
-        ]
-      }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
+    "primary": "#eaec54",
+    "light": "#6cccf4",
+    "dark": "#eaec54"
   },
   "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
+    "light": "https://media.brand.dev/a1b461e5-a65a-4fab-b09e-97cb0c4a5dbc.svg",
+    "dark": "https://media.brand.dev/a1b461e5-a65a-4fab-b09e-97cb0c4a5dbc.svg"
   },
   "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
     "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://app.mintlify.com"
+      "type": "github",
+      "href": "https://github.com/TI-Sin-Problemas/erpnext_mexico_compliance"
     }
-  },
-  "contextual": {
-    "options": [
-      "copy",
-      "view",
-      "chatgpt",
-      "claude",
-      "perplexity",
-      "mcp",
-      "cursor",
-      "vscode"
-    ]
   },
   "footer": {
     "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
+      "github": "https://github.com/TI-Sin-Problemas/erpnext_mexico_compliance"
     }
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "CFDI Stamping",
+            "pages": [
+              "cfdi/overview",
+              "cfdi/sales-invoice-stamping",
+              "cfdi/payment-entry-stamping",
+              "cfdi/cancellation"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/stamping-settings",
+              "configuration/digital-signing-certificate",
+              "configuration/pdf-email-templates"
+            ]
+          },
+          {
+            "group": "SAT Catalogs",
+            "pages": [
+              "catalogs/overview",
+              "catalogs/updating-catalogs"
+            ]
+          },
+          {
+            "group": "Compliance Fields",
+            "pages": [
+              "fields/overview",
+              "fields/customer-fields",
+              "fields/invoice-fields"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Reference",
+        "groups": [
+          {
+            "group": "DocTypes",
+            "pages": [
+              "reference/cfdi-stamping-settings",
+              "reference/digital-signing-certificate",
+              "reference/sat-catalogs-doctypes"
+            ]
+          },
+          {
+            "group": "Hooks & Extensions",
+            "pages": [
+              "reference/document-hooks",
+              "reference/scheduled-jobs",
+              "reference/validators"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/docker",
+              "deployment/troubleshooting"
+            ]
+          }
+        ]
+      }
+    ]
   }
 }

@@ -1,0 +1,170 @@
+---
+title: "Custom PDF and Email Templates for CFDI Documents"
+sidebarTitle: "PDF & Email Templates"
+description: "Configure custom Jinja HTML templates for CFDI PDF rendering and automatic email notifications after stamping (premium feature)."
+---
+
+By default, the app renders CFDI PDFs using the built-in `satcfdi` library renderer. Premium subscribers can provide custom Jinja HTML templates per document type — **Sales Invoice** and **Payment Entry** — to produce branded PDF representations of stamped CFDIs, and can configure automatic email delivery of those files to customers after stamping.
+
+<Note>
+  Custom PDF templates and automatic email sending are **premium features**.
+  The **Is Premium** flag in [CFDI Stamping Settings](/configuration/stamping-settings)
+  must be active before the PDF Templates and Email Templates sections become
+  visible on the form. Premium status is determined automatically by your
+  subscription and cannot be set manually.
+</Note>
+
+---
+
+## CFDI PDF Templates
+
+### Navigating to PDF Templates
+
+Open **Mexico Compliance → CFDI Stamping Settings**. When **Is Premium** is active, scroll to the **Premium Features** section to find the **PDF Templates** child table.
+
+### Template fields
+
+Each row in the **PDF Templates** table is a `CFDI PDF Template` child DocType with the following fields:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| Company | Link | Yes | The company this template applies to |
+| Document Type | Select | Yes | `Sales Invoice` or `Payment Entry` |
+| Title | Data | No | Label for the template (defaults to `CFDI`) |
+| Letter Head | Link | No | An ERPNext Letter Head whose header and footer wrap the body |
+| CSS Styles | Code (CSS) | No | Stylesheet applied to the rendered HTML |
+| Content HTML | HTML Editor | Yes | Jinja HTML template for the PDF body |
+
+The combination of **Company** + **Document Type** must be unique across all rows. The app enforces this constraint on save and raises an error if a duplicate is detected.
+
+### Template rendering context
+
+When a PDF is rendered, the `Content HTML` field is processed as a Jinja template with the following context variables:
+
+| Variable | Type | Description |
+|---|---|---|
+| `cfdi` | `CFDI` | The parsed CFDI object from `satcfdi`, populated from the stamped XML |
+| `doc` | `Document` | The ERPNext document (Sales Invoice or Payment Entry) |
+| `qr` | `str` | A base64-encoded PNG QR code image pointing to the SAT verification URL (`cfdi.verifica_url`) |
+
+The rendered HTML is assembled as a full HTML document: the `CSS Styles` are injected into `<head>`, and the Letter Head's header and footer (if set) wrap the `Content HTML` inside `<body>`. The final document is converted to PDF using `frappe.utils.pdf.get_pdf`.
+
+If no matching PDF template is found for the document's company and document type, the app falls back to the default `satcfdi` renderer.
+
+### Loading sample content
+
+Each row in the PDF Templates table provides two helper buttons:
+
+- **Load Content Sample** — populates the **Content HTML** field with the example Jinja template for the selected Document Type.
+- **Load CSS Sample** — populates the **CSS Styles** field with the example stylesheet for the selected Document Type.
+- **Print example** — renders an example PDF using a sample CFDI XML file and the first available document of the selected type, so you can preview your template immediately.
+
+### Example: Ingreso (Sales Invoice) template
+
+The repository ships with fully-working example templates in:
+
+- `erpnext_mexico_compliance/examples/cfdi/ingreso.html.jinja` — HTML body for Sales Invoice PDFs
+- `erpnext_mexico_compliance/examples/cfdi/ingreso.css` — accompanying stylesheet
+- `erpnext_mexico_compliance/examples/cfdi/pago.html.jinja` — HTML body for Payment Entry PDFs
+- `erpnext_mexico_compliance/examples/cfdi/pago.css` — accompanying stylesheet
+
+The example ingreso template renders a complete CFDI representation, including issuer and recipient blocks, line items with taxes, totals, and the Timbre Fiscal Digital section with the QR code. Below is an excerpt showing how the key CFDI fields and QR code are referenced:
+
+```html
+<h3>CFDI de {{ cfdi.TipoDeComprobante.description }}</h3>
+
+<!-- Issuer and recipient -->
+<td rowspan="4">
+    <div><strong>{{ cfdi.Emisor.Nombre }}</strong></div>
+    <div><strong>RFC: </strong>{{ cfdi.Emisor.Rfc }}</div>
+    <div><strong>Régimen Fiscal: </strong>{{ cfdi.Emisor.RegimenFiscal }}</div>
+    <div><strong>C.P.: </strong>{{ cfdi.LugarExpedicion }}</div>
+    <div><strong>No. Certificado: </strong>{{ cfdi.NoCertificado }}</div>
+</td>
+
+<!-- Timbre Fiscal Digital section -->
+{% if cfdi.Complemento %}
+{% set tfd = cfdi.Complemento.TimbreFiscalDigital %}
+<h4>Timbre Fiscal Digital</h4>
+<table>
+    <tbody>
+        <tr>
+            <td><strong>Folio Fiscal:</strong></td>
+            <td>{{ tfd.UUID }}</td>
+            <td><strong>Fecha de Certificación:</strong></td>
+            <td>{{ tfd.FechaTimbrado }}</td>
+        </tr>
+    </tbody>
+</table>
+<table>
+    <tbody>
+        <tr>
+            <!-- qr is a base64 PNG of the SAT verification QR code -->
+            <td><img src="data:image/png;base64,{{ qr }}" alt="QR Code" /></td>
+            <td>
+                <div><strong>Sello del CFDI:</strong> {{ tfd.SelloCFD }}</div>
+                <div><strong>Sello del SAT:</strong> {{ tfd.SelloSAT }}</div>
+            </td>
+        </tr>
+    </tbody>
+</table>
+{% endif %}
+```
+
+<Tip>
+  Use the **Load Content Sample** and **Load CSS Sample** buttons on each PDF
+  template row to pre-populate the fields with the full example content. You
+  can then customize the HTML and CSS to match your brand without starting from
+  scratch.
+</Tip>
+
+---
+
+## CFDI Email Templates
+
+### Navigating to Email Templates
+
+Open **Mexico Compliance → CFDI Stamping Settings**. When **Is Premium** is active and **Send email on stamp** is enabled, the **Email Templates** table is displayed in the **Premium Features** section.
+
+### Template fields
+
+Each row in the **Email Templates** table is a `CFDI Email Template` child DocType with two fields:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| Document Type | Select | Yes | `Sales Invoice` or `Payment Entry` |
+| Email Template | Link | Yes | Links to a standard ERPNext **Email Template** record |
+
+The linked ERPNext Email Template defines the email **subject** and **message body** as Jinja templates. The context passed to these templates is the document serialized as a Python dictionary, giving you access to all document fields (e.g., `{{ doc.customer }}`, `{{ doc.grand_total }}`).
+
+### How automatic email works
+
+After a document is successfully stamped, if **Send email on stamp** is enabled and an Email Template row exists for that document type, the app:
+
+1. Resolves the recipient contacts based on the **Send email to** setting.
+2. Renders the Email Template subject and body using the document as context.
+3. Attaches a ZIP file containing the stamped XML and the rendered PDF (custom template if available, otherwise the default renderer).
+4. Sends the email immediately.
+
+The **Email Templates** table is mandatory when **Send email on stamp** is enabled. Each document type you intend to email must have a corresponding row.
+
+---
+
+## Send email to options
+
+| Option | Behavior |
+|---|---|
+| All Billing Contacts | Sends to all contacts linked to the customer that are marked as billing contacts |
+| Document Contact | Sends only to the contact explicitly linked on the Sales Invoice or Payment Entry |
+
+---
+
+## Manual CFDI file delivery
+
+<Tip>
+  Premium subscription is not required to send CFDI files manually. On any
+  stamped Sales Invoice or Payment Entry, open the standard ERPNext **Email**
+  dialog. The app adds an **Attach CFDI Files** checkbox to the compose window.
+  Checking it automatically includes the stamped ZIP file (XML + PDF) as an
+  attachment to your outgoing email.
+</Tip>

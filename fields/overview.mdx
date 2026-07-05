@@ -1,0 +1,59 @@
+---
+title: "Mexican Compliance Fields Added to ERPNext DocTypes"
+sidebarTitle: "Overview"
+description: "ERPNext Mexico Compliance adds SAT-required fields to Customer, Company, Item, Sales Invoice, Payment Entry, UOM, and other core ERPNext DocTypes."
+---
+
+To generate valid CFDI documents, the SAT requires specific data on issuers, receivers, items, and payments. ERPNext Mexico Compliance adds all of these fields as Custom Fields to the relevant ERPNext DocTypes — no manual schema changes are needed. Every field is defined in source control and applied automatically when you install or upgrade the app.
+
+## How fields are added
+
+All compliance fields are implemented as **Frappe Custom Fields** and stored as fixtures in `erpnext_mexico_compliance/fixtures/custom_field.json`. During installation or upgrade, running `bench migrate` loads the fixture file and applies every Custom Field definition to your site's database. Each field entry declares the target DocType (`dt`), the insert position (`insert_after`), the field type, and the module name `ERPNext Mexico Compliance` so that the fields are tracked and can be updated in future releases without conflicting with ERPNext's own schema.
+
+Because the fields are fixtures, you can inspect or audit them at any time by reading `custom_field.json` — there is no hidden schema manipulation.
+
+<Note>
+  Fields are prefixed with `mx_` in the database (e.g., `mx_tax_regime`, `mx_stamped_xml`) to avoid conflicts with other ERPNext apps. Display labels follow standard SAT terminology as published in the official catalogs.
+</Note>
+
+## DocType field summary
+
+The table below lists every DocType that receives new fields and provides a summary of what is added.
+
+| DocType | Fields Added |
+|---|---|
+| Account | Tax Type (IVA, ISR, IEPS) |
+| Bank Account | CLABE (Clave Bancaria Estandarizada) |
+| Company | SAT Tax Regime |
+| Customer | SAT Tax Regime, CFDI Use, Addenda |
+| Employee | CURP |
+| Item | SAT Product or Service Key |
+| Mode of Payment | SAT Payment Method |
+| Payment Entry | Cancellation Reason, Substitute Payment Entry, Stamped XML, Cancellation Acknowledgement, CFDI Status |
+| Sales Invoice | Mode of Payment, SAT Payment Option, SAT CFDI Use, SAT Payment Method, Stamped XML, Cancellation Reason, Substitute Invoice, Cancellation Acknowledgement, Addenda, Related Sales Invoices |
+| Sales Invoice Item | SAT Product or Service Key |
+| Sales Order Item | SAT Product or Service Key |
+| Subscription | Mode of Payment, SAT Payment Option |
+| UOM | SAT UOM Key |
+
+## DocType overrides
+
+In addition to custom fields, the app replaces five ERPNext DocType controller classes with subclasses that add Mexican compliance validation and CFDI generation logic. These overrides are declared in the app's `hooks.py` and are transparent to users — the standard ERPNext forms and APIs continue to work as expected.
+
+<CardGroup cols={2}>
+  <Card title="Customer" icon="user">
+    Validates the Tax ID (RFC) format using the SAT regex pattern and checks for duplicate RFCs across Customer records. Also validates and normalises the `mx_addenda` XML template on save.
+  </Card>
+  <Card title="Employee" icon="id-card">
+    Validates the CURP (Clave Única de Registro de Población) using the 18-character official format. Also validates the employee RFC (`mx_rfc`) and Social Security Number (`mx_ssn`).
+  </Card>
+  <Card title="Payment Entry" icon="money-bill-transfer">
+    Implements CFDI Pago 2.0 stamping logic, validates that all referenced Sales Invoices have been stamped before a Payment Entry can be stamped, and handles CFDI cancellation with acknowledgement storage.
+  </Card>
+  <Card title="Sales Invoice" icon="file-invoice">
+    Generates CFDI Ingreso documents, orchestrates the stamping workflow, validates company address, customer RFC and tax regime, validates all line items, appends the `<Addenda>` block if present, and stores the stamped XML and UUID.
+  </Card>
+  <Card title="Sales Invoice Item" icon="list">
+    Validates that every line item has a SAT Product or Service Key (`mx_product_service_key`) and that the item's Unit of Measure has a SAT UOM Key (`mx_uom_key`) before the parent invoice can be stamped. Items with zero amount are excluded from the generated CFDI.
+  </Card>
+</CardGroup>

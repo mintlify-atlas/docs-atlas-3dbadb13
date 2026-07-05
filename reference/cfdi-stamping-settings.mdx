@@ -1,0 +1,176 @@
+---
+title: "CFDI Stamping Settings DocType Reference"
+sidebarTitle: "Stamping Settings"
+description: "Complete field reference for the CFDI Stamping Settings singleton DocType — API credentials, stamp behavior, email, PDF templates, and premium features."
+---
+
+`CFDI Stamping Settings` is a singleton DocType (one record per ERPNext site). It controls all aspects of CFDI stamping, including API credentials for the TI Sin Problemas web service, auto-stamp behavior on document submission, credit balance warnings, and optional email notifications with CFDI attachments.
+
+<Note>
+  Because this is a singleton, only one record exists per ERPNext site. Navigate to it via **ERPNext Mexico Compliance → CFDI Stamping Settings**.
+</Note>
+
+## Fields reference
+
+### Web Service
+
+These fields configure the connection to the TI Sin Problemas CFDI stamping web service. The `api_key` and `api_secret` values can be overridden at the site level via `site_config.json` (using the keys `cfdi_api_key`, `cfdi_api_secret`, and `cfdi_test_mode`). When set in `site_config.json`, they cannot be changed from the UI.
+
+<ParamField path="api_key" type="Data">
+  API Key for the TI Sin Problemas CFDI web service. Pair this with `api_secret` to authenticate all stamping requests. When `test_mode` is enabled, requests are routed to `https://cfdi.tisp-staging.com`; when disabled, requests go to `https://tisinproblemas.com`.
+</ParamField>
+
+<ParamField path="api_secret" type="Password">
+  API Secret for the TI Sin Problemas CFDI web service. Stored encrypted. Combined with `api_key` to form the HTTP Basic authentication token (`api_key:api_secret`).
+</ParamField>
+
+<ParamField path="test_mode" type="Check" default="1">
+  Enable test (staging) mode. While enabled, all stamping requests are sent to `https://cfdi.tisp-staging.com` and do not consume production credits or generate legally valid CFDIs. Disable this field before going live in production.
+</ParamField>
+
+<ParamField path="is_premium" type="Check (virtual)" default="0">
+  Read-only virtual field set automatically by the subscription check. When both `api_key` and `api_secret` are configured and the account has an active subscription, this field returns `True` and unlocks the **Premium Features** section. The subscription status is cached in Redis for 12 hours.
+</ParamField>
+
+<ParamField path="enable_low_credits_warning" type="Check" default="1">
+  Show an orange alert banner when the available CFDI credit balance falls below `low_credits_threshold`. The credit check is performed by calling `get_available_credits()` against the web service.
+</ParamField>
+
+<ParamField path="low_credits_threshold" type="Int" default="50">
+  Numeric threshold for the low-credits alert. The warning fires when remaining credits are strictly less than this value. Only visible when `enable_low_credits_warning` is checked.
+</ParamField>
+
+### Stamp Behavior
+
+<ParamField path="stamp_on_submit" type="Check" default="0">
+  Automatically stamp eligible documents (Sales Invoice, Payment Entry) when they are submitted in ERPNext. When enabled, the `default_csds` table becomes mandatory so the system knows which Digital Signing Certificate to use for each company.
+</ParamField>
+
+<ParamField path="default_csds" type="Table → Default CSD">
+  Maps each company to its active Digital Signing Certificate used for automatic stamping. Each row contains a `company` (Link → Company) and a `csd` (Link → Digital Signing Certificate). This table is only visible and required when `stamp_on_submit` is enabled.
+
+  | Column | Type | Description |
+  |--------|------|-------------|
+  | `company` | Link → Company | The ERPNext Company for which this CSD applies |
+  | `csd` | Link → Digital Signing Certificate | The active CSD record to use when stamping documents for this company |
+</ParamField>
+
+### Premium Features
+
+<Note>
+  Fields in this section are only active when `is_premium` evaluates to `True`. They are visible in the form but have no effect on non-premium accounts.
+</Note>
+
+<ParamField path="pdf_templates" type="Table → CFDI PDF Template">
+  Custom Jinja/HTML PDF templates to use instead of the default layout when generating the CFDI PDF attachment. Each row specifies a `company` and `document_type` (e.g., Sales Invoice, Payment Entry). Duplicate combinations of company + document type are rejected on save.
+</ParamField>
+
+<ParamField path="send_email_on_stamp" type="Check" default="0">
+  When enabled, an email carrying the stamped CFDI XML and PDF as attachments is sent automatically after each successful stamp operation. Requires `is_premium` to be `True`.
+</ParamField>
+
+<ParamField path="send_email_to" type="Select">
+  Determines which contact receives the post-stamp email. Only visible when `send_email_on_stamp` is checked. Valid options:
+
+  | Value | Behavior |
+  |-------|----------|
+  | `All Billing Contacts` | Sends the email to every contact on the customer record that has the **Billing** contact type |
+  | `Document Contact` | Sends the email only to the contact explicitly linked on the Sales Invoice or Payment Entry |
+
+  This field is mandatory when `send_email_on_stamp` is enabled.
+</ParamField>
+
+<ParamField path="email_templates" type="Table → CFDI Email Template">
+  Frappe Email Template to use per document type. Each row links a `document_type` to an `email_template` (Link → Email Template). When `send_email_on_stamp` is enabled, this table must contain at least one entry for every document type that will be stamped. The template is rendered with the full document as context (subject and HTML body).
+</ParamField>
+
+---
+
+## Permissions
+
+| Role | Read | Write | Create | Delete |
+|------|------|-------|--------|--------|
+| System Manager | ✓ | ✓ | ✓ | ✓ |
+
+---
+
+## Whitelisted methods
+
+The following methods are exposed via `frappe.call` and can be invoked from the browser or through the Frappe REST API.
+
+### `check_low_credits()`
+
+Fetches the current credit balance from the web service and displays an orange alert if the balance is below `low_credits_threshold`. No return value; the alert is shown in-app via `frappe.msgprint`.
+
+```python
+# Called internally after stamping operations
+settings = frappe.get_single("CFDI Stamping Settings")
+settings.check_low_credits()
+```
+
+### `get_available_credits()`
+
+Returns the number of available stamping credits from the TI Sin Problemas subscription endpoint.
+
+```python
+settings = frappe.get_single("CFDI Stamping Settings")
+credits: int = settings.get_available_credits()
+```
+
+**Returns:** `int` — the number of available credits reported by the web service.
+
+### `can_send_emails(doctype)`
+
+Returns `True` if all conditions for sending a post-stamp email are met for the given document type: the account is premium, `send_email_on_stamp` is checked, `send_email_to` is set, and the doctype has a configured entry in `email_templates`.
+
+```python
+settings = frappe.get_single("CFDI Stamping Settings")
+if settings.can_send_emails("Sales Invoice"):
+    # proceed with email dispatch
+    ...
+```
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `doctype` | `"Payment Entry"` \| `"Sales Invoice"` | The document type to check |
+
+**Returns:** `bool`
+
+### `get_email_template(doctype, doc)`
+
+Renders the configured Frappe Email Template for the given document type using `doc` as the Jinja context. Raises `StopIteration` if no template is configured for the doctype.
+
+```python
+settings = frappe.get_single("CFDI Stamping Settings")
+result: dict = settings.get_email_template("Sales Invoice", invoice.as_dict())
+# result = {"subject": "...", "message": "<html>...</html>"}
+```
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `doctype` | `"Payment Entry"` \| `"Sales Invoice"` | The document type whose template should be rendered |
+| `doc` | `dict` | The document as a dictionary, used as Jinja template context |
+
+**Returns:** `dict` with keys `subject` (str) and `message` (str HTML).
+
+---
+
+## Site config overrides
+
+API credentials and test mode can be locked to values set by the site administrator in `site_config.json`. When a site-config value is present, the UI field is overwritten on every `before_validate` hook and a notice is shown to inform users that only the site admin can change it.
+
+```json
+{
+  "cfdi_api_key": "your-api-key",
+  "cfdi_api_secret": "your-api-secret",
+  "cfdi_test_mode": 0
+}
+```
+
+<Warning>
+  Setting `cfdi_test_mode` to `0` in `site_config.json` enables production stamping site-wide. Ensure your `api_key` and `api_secret` are valid production credentials before making this change.
+</Warning>

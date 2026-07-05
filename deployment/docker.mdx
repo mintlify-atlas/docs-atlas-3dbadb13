@@ -1,0 +1,98 @@
+---
+title: "Deploy ERPNext Mexico Compliance with Docker"
+sidebarTitle: "Docker"
+description: "Use the provided Containerfile and apps.json to build a Docker image with Frappe, ERPNext, and ERPNext Mexico Compliance pre-installed."
+---
+
+The repository includes a `docker/` directory with a `Containerfile` and `apps.json` for building a Docker image that has ERPNext and ERPNext Mexico Compliance pre-installed. The build process follows the standard Frappe Docker custom-image pattern: a multi-stage build initializes a `frappe-bench` environment with all specified apps, and the resulting image is used as the backend container in a `frappe_docker` compose stack.
+
+## Repository files
+
+| File | Purpose |
+|---|---|
+| `docker/Containerfile` | Dockerfile-compatible multi-stage build definition based on `frappe/build` and `frappe/base` |
+| `docker/apps.json` | List of app sources (URL + branch) to install into the bench during the build |
+
+## apps.json structure
+
+The `apps.json` file lists every app that should be cloned and installed into the bench image. It uses the same format expected by `bench init --apps_path`:
+
+```json docker/apps.json
+[
+  {
+    "url": "https://github.com/frappe/erpnext",
+    "branch": "version-16"
+  },
+  {
+    "url": "%s REPO_URL",
+    "branch": "%s REPO_BRANCH"
+  }
+]
+```
+
+Before building, replace the `%s REPO_URL` and `%s REPO_BRANCH` placeholders with the actual repository URL and branch for `erpnext_mexico_compliance` (or your fork):
+
+```json
+[
+  {
+    "url": "https://github.com/frappe/erpnext",
+    "branch": "version-16"
+  },
+  {
+    "url": "https://github.com/TI-Sin-Problemas/erpnext_mexico_compliance",
+    "branch": "version-16"
+  }
+]
+```
+
+<Note>
+Frappe is not listed in `apps.json` because it is installed by `bench init` itself via the `--frappe-branch` and `--frappe-path` build arguments. Only additional apps beyond Frappe need to be listed here.
+</Note>
+
+## Building the image
+
+The `Containerfile` uses a two-stage build:
+
+1. **Builder stage** (`frappe/build:version-16`) — runs `bench init` with the `apps.json` to clone and install all apps, then strips `.git` directories to reduce image size.
+2. **Backend stage** (`frappe/base:version-16`) — copies the fully initialized bench from the builder and configures volumes and the Gunicorn entrypoint.
+
+To build the image, base64-encode your `apps.json` and pass it as a build argument:
+
+```bash
+# 1. Encode apps.json
+export APPS_JSON_BASE64=$(base64 -w 0 docker/apps.json)
+
+# 2. Build the image
+docker build \
+  --build-arg FRAPPE_BRANCH=version-16 \
+  --build-arg APPS_JSON_BASE64=$APPS_JSON_BASE64 \
+  --file docker/Containerfile \
+  --tag myregistry/erpnext-mexico:version-16 \
+  .
+```
+
+The resulting image runs Gunicorn on port `8000` and expects the `sites/`, `sites/assets/`, and `logs/` directories to be provided as Docker volumes.
+
+<Note>
+This Docker setup is for building custom images that bundle the compliance app. For a full production deployment — including the scheduler, worker, Redis, MariaDB, and nginx containers — use the official [frappe_docker](https://github.com/frappe/frappe_docker) compose setup and reference your custom image as the backend service.
+</Note>
+
+## Environment requirements
+
+The following runtime dependencies are required. These are enforced by `pyproject.toml`:
+
+| Dependency | Required version |
+|---|---|
+| Python | ≥ 3.14 |
+| Frappe Framework | ≥ 16.0.0, < 17.0.0 |
+| ERPNext | ≥ 16.0.0, < 17.0.0 |
+| MariaDB or PostgreSQL | As supported by Frappe 16 |
+| Redis | As supported by Frappe 16 |
+| `satcfdi` | == 4.9.25 |
+| `lxml` | == 6.1.1 |
+
+The `satcfdi` and `lxml` dependencies are declared in `pyproject.toml` and are installed automatically by `bench init` during the image build.
+
+<Tip>
+For **Frappe Cloud** deployments, no Docker image build is required. Install the app directly from the Frappe Cloud marketplace or by providing the repository URL in the Frappe Cloud site setup interface. See the [Frappe Cloud app installation guide](https://frappecloud.com/docs/installing-an-app) for step-by-step instructions.
+</Tip>

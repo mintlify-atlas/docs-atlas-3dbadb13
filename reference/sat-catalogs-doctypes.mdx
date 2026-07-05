@@ -1,0 +1,297 @@
+---
+title: "SAT Catalog DocType Reference for CFDI 4.0"
+sidebarTitle: "SAT Catalog DocTypes"
+description: "Field reference for all SAT catalog DocTypes: SAT Tax Regime, CFDI Use, Payment Method, Payment Option, Product Key, UOM Key, Relationship Type, and Cancellation Reason."
+---
+
+Each SAT catalog is represented as a Frappe DocType. These DocTypes are populated automatically from official SAT data and linked to other ERPNext DocTypes via standard Link fields. Records are managed centrally and read-only to Accounts Users; only System Managers and Accounts Managers can add or modify entries.
+
+<Note>
+  All catalog DocTypes support quick entry and are sortable in list view. Records populated by the installation fixtures should not be deleted manually — doing so will break CFDI generation for any document referencing the deleted entry.
+</Note>
+
+---
+
+## Catalog DocTypes
+
+<Accordion title="SAT Tax Regime (sat_tax_regime)">
+
+The **SAT Tax Regime** catalog maps the two- or three-digit fiscal regime codes (*Régimen Fiscal*) defined by the SAT to their human-readable descriptions. Each company and customer in ERPNext must be assigned a tax regime from this catalog before CFDI 4.0 documents can be generated.
+
+**Auto-naming:** `field:key` — the document name is set to the value of the `key` field (e.g., `601`, `612`).
+
+**Fields:**
+
+<ParamField path="enabled" type="Check" default="1">
+  Controls whether this regime code is available in dropdown lists on Company and Customer records. Disable obsolete regimes instead of deleting them to preserve referential integrity.
+</ParamField>
+
+<ParamField path="key" type="Data" required>
+  The official SAT regime code. Maximum 3 characters, unique across the catalog (e.g., `601` for *General de Ley Personas Morales*, `612` for *Personas Físicas con Actividades Empresariales y Profesionales*).
+</ParamField>
+
+<ParamField path="description" type="Data" required>
+  Full Spanish description of the tax regime as published in the SAT catalog (e.g., *General de Ley Personas Morales*).
+</ParamField>
+
+<ParamField path="key_name" type="Data (read-only)">
+  Computed display label shown in link fields throughout ERPNext (format: `key – description`). Updated automatically; do not edit manually.
+</ParamField>
+
+**Used in:**
+
+| DocType | Field |
+|---------|-------|
+| Company | `mx_tax_regime` |
+| Customer | `mx_tax_regime` |
+| SAT CFDI Use | `tax_regimes` (child table — links which regimes may use each CFDI use code) |
+
+</Accordion>
+
+<Accordion title="SAT CFDI Use (sat_cfdi_use)">
+
+The **SAT CFDI Use** catalog maps the SAT *Uso de CFDI* codes to their descriptions and the list of fiscal regimes that are permitted to use each code. When a Sales Invoice is stamped, the customer's `mx_cfdi_use` must correspond to a code that is valid for the customer's `mx_tax_regime`.
+
+**Auto-naming:** `field:key` — the document name is set to the value of the `key` field (e.g., `G01`, `S01`, `CP01`).
+
+**Fields:**
+
+<ParamField path="enabled" type="Check" default="1">
+  Controls whether this CFDI use code appears in dropdown lists on Customer and Sales Invoice records.
+</ParamField>
+
+<ParamField path="key" type="Data" required>
+  The official SAT CFDI use code. Maximum 4 characters, unique across the catalog (e.g., `G01` for *Adquisición de mercancias*, `S01` for *Sin efectos fiscales*).
+</ParamField>
+
+<ParamField path="description" type="Data" required>
+  Full Spanish description of the CFDI use as published in the SAT catalog.
+</ParamField>
+
+<ParamField path="key_name" type="Data (read-only)">
+  Computed display label shown in link fields (format: `key – description`). Updated automatically.
+</ParamField>
+
+<ParamField path="tax_regimes" type="Table → SAT CFDI Use Tax Regime">
+  Child table listing the tax regime codes (*claves de régimen fiscal*) that are allowed to use this CFDI use code. Each row links to a **SAT Tax Regime** record. Used during CFDI validation to confirm that the customer's regime and CFDI use combination is permissible under SAT rules.
+</ParamField>
+
+**Used in:**
+
+| DocType | Field |
+|---------|-------|
+| Customer | `mx_cfdi_use` |
+| Sales Invoice | `mx_cfdi_use` |
+
+</Accordion>
+
+<Accordion title="SAT Payment Method (sat_payment_method)">
+
+The **SAT Payment Method** catalog (*Catálogo de Formas de Pago*) describes how a payment was physically made — cash, bank transfer, credit card, etc. This is the `FormaPago` attribute in CFDI 4.0 XML. It is linked to ERPNext's **Mode of Payment** to automatically populate the value when generating a CFDI.
+
+**Auto-naming:** `field:key` — the document name is set to the value of the `key` field (e.g., `01`, `03`).
+
+**SAT description:** *Indica la forma en que se realizó el pago, de acuerdo con el catálogo del SAT de formas de pago.*
+
+**Fields:**
+
+<ParamField path="enabled" type="Check" default="1">
+  Controls visibility in Mode of Payment dropdown lists.
+</ParamField>
+
+<ParamField path="key" type="Data" required>
+  Two-character SAT payment form code, unique across the catalog (e.g., `01` for *Efectivo*, `03` for *Transferencia electrónica de fondos*, `04` for *Tarjeta de crédito*).
+</ParamField>
+
+<ParamField path="description" type="Data" required>
+  Full Spanish description of the payment form as published in the SAT catalog.
+</ParamField>
+
+<ParamField path="key_name" type="Data (read-only)">
+  Computed display label shown in link fields (format: `key – description`).
+</ParamField>
+
+**Used in:**
+
+| DocType | Field |
+|---------|-------|
+| Mode of Payment | `mx_payment_method` |
+
+</Accordion>
+
+<Accordion title="SAT Payment Option (sat_payment_option)">
+
+The **SAT Payment Option** catalog (*Catálogo de Métodos de Pago*) distinguishes between single-payment invoices (PUE — *Pago en una sola exhibición*) and deferred/partial-payment invoices (PPD — *Pago en parcialidades o diferido*). This is the `MetodoPago` attribute in CFDI 4.0 XML. PPD invoices require a corresponding Payment Complement (*Complemento de Pago*) when the payment is received.
+
+**Auto-naming:** `field:key` — the document name is set to the value of the `key` field.
+
+**SAT description:** *Indica el método en que se realizó el pago, de acuerdo con el catálogo del SAT de métodos de pago.*
+
+**Fields:**
+
+<ParamField path="enabled" type="Check" default="1">
+  Controls visibility in Sales Invoice and Subscription dropdown lists.
+</ParamField>
+
+<ParamField path="key" type="Data" required>
+  SAT payment option code, unique across the catalog. The two standard values are `PUE` (*Pago en una sola exhibición*) and `PPD` (*Pago en parcialidades o diferido*).
+</ParamField>
+
+<ParamField path="key_name" type="Data (read-only)">
+  Computed display label shown in link fields (format: `key – description`).
+</ParamField>
+
+<ParamField path="description" type="Data" required>
+  Full Spanish description of the payment option as published in the SAT catalog.
+</ParamField>
+
+**Used in:**
+
+| DocType | Field |
+|---------|-------|
+| Sales Invoice | `mx_payment_option` |
+| Subscription | `mx_payment_option` |
+
+</Accordion>
+
+<Accordion title="SAT Product or Service Key (sat_product_or_service_key)">
+
+The **SAT Product or Service Key** catalog (*Catálogo de Productos y Servicios*) is the largest catalog in the module, containing tens of thousands of eight-digit codes that classify every product and service sold in Mexico. Each Sales Invoice line item must reference a valid key from this catalog as the `ClaveProdServ` attribute in CFDI 4.0 XML.
+
+**Auto-naming:** `field:key` — the document name is set to the value of the `key` field (e.g., `84111506` for *Servicios de programación de software*).
+
+<Warning>
+  This catalog contains a large number of entries (typically 50,000+). Avoid loading all records simultaneously in custom scripts; use server-side filtering or the built-in link field search.
+</Warning>
+
+**Fields:**
+
+<ParamField path="key" type="Data" required>
+  Eight-character numeric SAT product or service code, unique across the catalog. Maximum length 8 characters (enforced at the database level).
+</ParamField>
+
+<ParamField path="description" type="Data" required>
+  Spanish description of the product or service category as published in the SAT catalog. Maximum length 150 characters.
+</ParamField>
+
+<ParamField path="key_name" type="Data (read-only)">
+  Computed display label shown in link fields (format: `key – description`).
+</ParamField>
+
+**Used in:**
+
+| DocType | Field |
+|---------|-------|
+| Item | `mx_product_service_key` |
+| Sales Invoice Item | `mx_product_service_key` |
+| Sales Order Item | `mx_product_service_key` |
+
+</Accordion>
+
+<Accordion title="SAT UOM Key (sat_uom_key)">
+
+The **SAT UOM Key** catalog (*Catálogo de Unidades de Medida*) maps SAT unit-of-measure codes to their standard names and descriptions. Each unit of measure in ERPNext must be linked to a SAT UOM Key so that the correct `ClaveUnidad` attribute is included in CFDI 4.0 XML line items.
+
+**Auto-naming:** `field:key` — the document name is set to the value of the `key` field (e.g., `H87` for *Pieza*, `KGM` for *Kilogramo*).
+
+**Fields:**
+
+<ParamField path="enabled" type="Check" default="1">
+  Controls whether this UOM key appears in UOM link field dropdowns.
+</ParamField>
+
+<ParamField path="key" type="Data" required>
+  SAT unit-of-measure code, unique across the catalog. The codes follow the UN/CEFACT standard (e.g., `H87`, `KGM`, `MTR`, `LTR`).
+</ParamField>
+
+<ParamField path="uom_name" type="Data" required>
+  Standard name of the unit of measure (e.g., `Pieza`, `Kilogramo`, `Metro`, `Litro`).
+</ParamField>
+
+<ParamField path="description" type="Small Text">
+  Optional extended description of the unit of measure.
+</ParamField>
+
+<ParamField path="key_name" type="Data (read-only)">
+  Computed display label shown in link fields (format: `key – uom_name`).
+</ParamField>
+
+**Used in:**
+
+| DocType | Field |
+|---------|-------|
+| UOM | `mx_uom_key` |
+
+</Accordion>
+
+<Accordion title="SAT Relationship Type (sat_relationship_type)">
+
+The **SAT Relationship Type** catalog (*Catálogo de Tipos de Relación*) defines the nature of the relationship between a CFDI and one or more previously issued CFDIs listed in the `CfdiRelacionados` node. Common uses include credit notes, substitutions, and invoice groupings.
+
+**Auto-naming:** `field:code` — the document name is set to the value of the `code` field (e.g., `01`, `04`).
+
+**Fields:**
+
+<ParamField path="code" type="Data" required>
+  Two-character SAT relationship type code, unique across the catalog (e.g., `01` for *Nota de crédito de los documentos relacionados*, `04` for *Sustitución de los CFDI previos*).
+</ParamField>
+
+<ParamField path="description" type="Data" required>
+  Full Spanish description of the relationship type as published in the SAT catalog.
+</ParamField>
+
+<ParamField path="valid_from" type="Date">
+  The date from which this relationship type code is valid under the current SAT catalog version. Relationship types added in SAT catalog updates will have a `valid_from` date corresponding to the update's effective date.
+</ParamField>
+
+<ParamField path="enabled" type="Check" default="1">
+  Controls whether this relationship type appears in dropdown lists when linking related invoices.
+</ParamField>
+
+**Used in:**
+
+| DocType | Field |
+|---------|-------|
+| Sales Invoice | Related Sales Invoices child table (`relationship_type`) |
+
+</Accordion>
+
+<Accordion title="Cancellation Reason (cancellation_reason)">
+
+The **Cancellation Reason** catalog defines the four official SAT cancellation reason codes required since the CFDI 4.0 cancellation policy update. When a stamped CFDI is cancelled, the cancellation request sent to the SAT must include one of these codes. If the selected reason `requires_relationship`, a substitute document UUID must also be provided.
+
+**Auto-naming:** `field:code` — the document name is set to the value of the `code` field.
+
+**Fields:**
+
+<ParamField path="code" type="Data" required>
+  Two-character SAT cancellation reason code, unique across the catalog. The four standard codes are:
+
+  | Code | Description |
+  |------|-------------|
+  | `01` | *Comprobante emitido con errores con relación* — requires a substitute CFDI |
+  | `02` | *Comprobante emitido con errores sin relación* — no substitute required |
+  | `03` | *No se llevó a cabo la operación* — the transaction did not occur |
+  | `04` | *Operación nominativa relacionada en una factura global* — related to a global invoice |
+</ParamField>
+
+<ParamField path="description" type="Data" required>
+  Full Spanish description of the cancellation reason as published in the SAT catalog.
+</ParamField>
+
+<ParamField path="requires_relationship" type="Check" default="0">
+  When checked, cancelling a CFDI with this reason requires the user to provide the UUID of the substitute document (*CFDI de sustitución*). The SAT will reject cancellation requests for reason `01` that do not include a related document UUID.
+</ParamField>
+
+**Used in:**
+
+| DocType | Field |
+|---------|-------|
+| Sales Invoice | `cancellation_reason` |
+| Payment Entry | `cancellation_reason` |
+
+<Warning>
+  Deleting cancellation reason records will prevent users from cancelling CFDIs that reference the deleted code. These records should be managed only by the system administrator.
+</Warning>
+
+</Accordion>

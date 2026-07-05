@@ -1,0 +1,158 @@
+---
+title: "Troubleshoot CFDI Stamping and Installation Issues"
+sidebarTitle: "Troubleshooting"
+description: "Diagnose and fix common problems with CFDI stamping, cancellation, SAT catalog updates, and ERPNext Mexico Compliance installation."
+---
+
+This page covers the most common issues encountered when installing and using ERPNext Mexico Compliance. Each section describes the symptom, its most likely cause, and the steps to resolve it.
+
+<Accordion title="Stamp CFDI button is not visible">
+  The **Stamp CFDI** button is only rendered on submitted documents (`docstatus = 1`). If the document is still in Draft or has been cancelled, the button will not appear.
+
+  **Steps to resolve:**
+
+  1. Confirm the Sales Invoice or Payment Entry is in **Submitted** state. Open the document and check that the status indicator shows "Submitted".
+  2. Verify the app is installed on the site:
+     ```bash
+     bench --site <your-site-name> list-apps
+     ```
+     The output should include `erpnext_mexico_compliance`.
+  3. If the app was recently installed, run `bench migrate` to apply fixtures and JavaScript assets, then clear the browser cache.
+  4. Check browser console errors — if the custom JS bundle failed to load, the button may not be registered.
+</Accordion>
+
+<Accordion title='CFDI Stamping Error: "No Digital Signing Certificate"'>
+  The stamping process requires a valid CSD (Certificado de Sello Digital) issued by the SAT for the company on the document.
+
+  **Steps to resolve:**
+
+  1. Go to **Mexico Compliance → Digital Signing Certificate** and verify that a certificate exists for the company associated with the Sales Invoice or Payment Entry.
+  2. If no certificate exists, add one:
+     - Click **Add Digital Signing Certificate**.
+     - Select the correct **Company**.
+     - Attach the `.cer` certificate file and the `.key` private key file.
+     - Enter the key password and click **Save**.
+  3. If you are using the auto-stamp feature (stamping on submission), confirm that the **Default CSD** is configured in **Mexico Compliance → CFDI Stamping Settings** for that company.
+</Accordion>
+
+<Accordion title='CFDI Stamping Error: "Customer has no tax ID"'>
+  Every CFDI must carry the recipient's RFC. Stamping will fail if the Customer record does not have a Tax ID set, or if the Tax ID is not a validly formatted Mexican RFC.
+
+  **Steps to resolve:**
+
+  1. Open the Customer record and set the **Tax ID** field to the customer's RFC.
+  2. The RFC must be either 12 characters (legal entity) or 13 characters (natural person) and match the SAT format. Use the `is_valid_rfc` validator to check the format programmatically:
+     ```python
+     from erpnext_mexico_compliance.controllers.validators import is_valid_rfc
+
+     is_valid_rfc("XAXX010101000")  # True — generic public RFC
+     is_valid_rfc("INVALID-RFC")    # False
+     ```
+  3. For sales to the general public (Público en General), use the generic RFC `XAXX010101000`. For foreign customers, use `XEXX010101000`.
+</Accordion>
+
+<Accordion title='CFDI Stamping Error: "Address has no zip code"'>
+  The SAT requires a postal code (`LugarExpedicion`) on every CFDI. The app reads this from the issuing company's address.
+
+  **Steps to resolve:**
+
+  1. Open the **Company** record and navigate to the linked address.
+  2. Confirm that the **Zip Code** / **Postal Code** field is filled in with a valid 5-digit Mexican postal code.
+  3. For Sales Invoices, also verify that the **Customer's billing address** has a Zip Code set — this is used as the recipient's address data.
+  4. After saving the address, retry stamping.
+</Accordion>
+
+<Accordion title="SAT Catalog items not appearing">
+  SAT catalogs (SAT Product or Service Keys, SAT UOM Keys, SAT Payment Methods, etc.) are populated during `bench migrate` via the `after_migrate` hook, which runs `erpnext_mexico_compliance.migrate.execute_after_migrate_tasks`.
+
+  **Steps to resolve:**
+
+  1. Run a fresh migration to trigger catalog population:
+     ```bash
+     bench --site <your-site-name> migrate
+     ```
+  2. Large catalogs (SAT Product or Service Keys, SAT UOM Keys) are enqueued on the **long** queue. Make sure the long-queue worker is running:
+     ```bash
+     bench worker --queue long
+     ```
+  3. Check for background job errors: in the ERPNext Desk go to **Settings → Background Jobs** and look for failed jobs with `erpnext_mexico_compliance` in the function path.
+  4. If catalogs still do not appear after a successful migration, clear the cache:
+     ```bash
+     bench --site <your-site-name> clear-cache
+     ```
+</Accordion>
+
+<Accordion title='Cancellation status stuck at "Pending Cancellation"'>
+  After a CFDI cancellation request is submitted, the document moves to `"Pending Cancellation"` status and waits for the SAT to confirm. The hourly scheduled job (`check_cancellation_status`) polls the SAT automatically.
+
+  **Steps to resolve:**
+
+  1. Wait for the next hourly run. The scheduler queries the SAT for every document with `mx_cfdi_status = "Pending Cancellation"` and updates them automatically.
+  2. To check immediately without waiting, open the Sales Invoice or Payment Entry and click **Check Cancellation Status**. The current SAT response (code, document status, cancellability, cancellation status) will appear in a dialog.
+  3. If the SAT reports `CancellationStatus.REJECTED` ("Solicitud rechazada"), the cancellation request was denied by the recipient. You will need to coordinate with the recipient and submit a new cancellation request once they accept, or choose a different cancellation reason that does not require recipient approval (`CANCELLABLE_BY_DIRECT_CALL`).
+  4. If the scheduler is not running, restart it:
+     ```bash
+     bench start
+     ```
+     or, for production setups managed by Supervisor:
+     ```bash
+     sudo supervisorctl restart frappe-bench-schedule:
+     ```
+</Accordion>
+
+<Accordion title="test_mode is producing non-valid CFDIs">
+  When **Test Mode** is enabled in CFDI Stamping Settings, the web service returns a test UUID. These CFDIs are not registered with the SAT and are not legally valid fiscal documents.
+
+  **Steps to resolve:**
+
+  1. Go to **Mexico Compliance → CFDI Stamping Settings**.
+  2. Uncheck the **Test Mode** checkbox.
+  3. Click **Save**.
+  4. Any CFDIs stamped while in test mode must be re-stamped — they cannot be converted to valid CFDIs retroactively.
+
+  <Warning>
+    Leaving Test Mode enabled in a production environment will cause all stamped CFDIs to be legally invalid. Verify this setting before going live.
+  </Warning>
+</Accordion>
+
+<Accordion title="bench migrate fails or catalogs do not update">
+  A failed `bench migrate` can leave SAT catalogs partially updated or not updated at all. This is most commonly caused by a missing long-queue worker.
+
+  **Steps to resolve:**
+
+  1. Confirm the long-queue worker is running before migrating:
+     ```bash
+     bench worker --queue long &
+     ```
+  2. Re-run the migration:
+     ```bash
+     bench --site <your-site-name> migrate
+     ```
+  3. Watch the worker output for errors. Common causes include database connection issues and missing Python dependencies (`satcfdi`, `lxml`).
+  4. To check that `satcfdi` and `lxml` are installed in the bench virtualenv:
+     ```bash
+     bench pip show satcfdi lxml
+     ```
+     If either is missing, reinstall the app:
+     ```bash
+     bench --site <your-site-name> install-app erpnext_mexico_compliance
+     ```
+</Accordion>
+
+<Accordion title="Translation strings not showing in Spanish">
+  The app ships with `es` and `es_MX` locale files. If the UI is displaying untranslated strings (English keys) after switching the language, the translation cache is likely stale.
+
+  **Steps to resolve:**
+
+  1. Clear the site cache:
+     ```bash
+     bench --site <your-site-name> clear-cache
+     ```
+  2. Hard-reload the browser (Ctrl+Shift+R / Cmd+Shift+R) to discard cached JavaScript bundles.
+  3. Confirm the user's **Language** preference is set to `Spanish (es)` or `Spanish (Mexico) (es_MX)` in **User Settings**.
+  4. If strings are still missing, the translation file may need to be rebuilt:
+     ```bash
+     bench --site <your-site-name> build-search-index
+     bench build --app erpnext_mexico_compliance
+     ```
+</Accordion>

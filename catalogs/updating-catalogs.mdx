@@ -1,0 +1,139 @@
+---
+title: "Update SAT Catalogs from Official SAT Data Sources"
+sidebarTitle: "Updating Catalogs"
+description: "Refresh SAT catalog DocTypes by running the built-in update tasks that sync from the official phpcfdi/resources-sat-catalogs SQLite database."
+---
+
+The SAT periodically publishes updates to its catalogs — adding new product keys, adjusting UOM descriptions, or activating new relationship types. ERPNext Mexico Compliance automatically queues catalog updates during app migration (`bench migrate`) and provides a `CatalogManager` Python class for manual or scripted updates between migrations.
+
+## Automatic update on migration
+
+Every time you run `bench migrate`, Frappe fires the `after_migrate` hook defined by this app. That hook calls `enqueue_sat_catalogs_update()`, which dispatches one background job per catalog:
+
+| Background job | Queue | Catalog |
+|---|---|---|
+| `sat.update_tax_regimes` | default | SAT Tax Regime |
+| `sat.update_cfdi_uses` | default | SAT CFDI Use |
+| `sat.update_payment_options` | default | SAT Payment Option |
+| `sat.update_payment_methods` | default | SAT Payment Method |
+| `sat.update_product_or_service_keys` | **long** | SAT Product or Service Key |
+| `sat.update_relationship_types` | default | SAT Relationship Type |
+| `sat.update_units_of_measure` | **long** | SAT UOM Key |
+
+Each job is independent. If one fails (for example, due to a network timeout), the others continue unaffected.
+
+<Note>
+  **SAT Product or Service Key** and **SAT UOM Key** are large datasets containing thousands of records.
+  They are dispatched on the `long` queue to avoid worker timeout. Allow extra time for these two jobs
+  to finish after running `bench migrate` — do not assume all catalogs are ready immediately.
+</Note>
+
+## Data source
+
+The `CatalogManager` class (in `erpnext_mexico_compliance/sat/catalogs.py`) handles the full download-decompress-query cycle:
+
+<Steps>
+  <Step title="Download the database">
+    `CatalogManager` fetches `catalogs.db.bz2` from the latest release of
+    [`phpcfdi/resources-sat-catalogs`](https://github.com/phpcfdi/resources-sat-catalogs/releases/latest).
+    The URL resolved is always:
+    ```
+    https://github.com/phpcfdi/resources-sat-catalogs/releases/latest/download/catalogs.db.bz2
+    ```
+  </Step>
+  <Step title="Decompress and open">
+    The `.bz2` archive is decompressed in memory and written to a temporary file.
+    `CatalogManager` opens a `sqlite3` connection to that file. When used as a context manager
+    (`with CatalogManager() as manager:`), the connection is closed and the temporary file deleted
+    automatically on exit.
+  </Step>
+  <Step title="Query the SQLite tables">
+    Each catalog maps to a specific table in the SAT database:
+
+    | DocType | SQLite table |
+    |---|---|
+    | SAT Tax Regime | `cfdi_40_regimenes_fiscales` |
+    | SAT CFDI Use | `cfdi_40_usos_cfdi` |
+    | SAT Payment Method | `cfdi_40_formas_pago` |
+    | SAT Payment Option | `cfdi_40_metodos_pago` |
+    | SAT Product or Service Key | `cfdi_40_productos_servicios` |
+    | SAT Relationship Type | `cfdi_40_tipos_relaciones` |
+    | SAT UOM Key | `cfdi_40_claves_unidades` |
+  </Step>
+  <Step title="Upsert into Frappe DocTypes">
+    Each row from the SQLite query is matched against existing Frappe documents and upserted
+    (see [Upsert behavior](#upsert-behavior) below).
+  </Step>
+</Steps>
+
+## Upsert behavior
+
+The update logic follows a conservative, non-destructive pattern:
+
+- **New records** — if no document exists for a given `key` (or `code` for SAT Relationship Type), a new document is created with `frappe.new_doc()` and saved.
+- **Existing records** — if a document already exists, it is only saved when one or more tracked fields have changed. For most DocTypes the tracked field is `description`. SAT UOM Key also tracks `uom_name`. SAT Relationship Type additionally tracks `valid_from`.
+- **SAT CFDI Use tax regime links** — the `tax_regimes` child table is additive. New regime codes found in the SAT data are appended; no existing rows are removed.
+- **Records are never deleted** — removing a record from the SAT database does not delete it from ERPNext. If you need to retire an entry, uncheck its **Enabled** flag manually.
+
+<Warning>
+  Disabling a catalog entry hides it from link field dropdowns but does not remove it from
+  documents that already reference it. Verify existing transactions before disabling a key
+  that has been used in submitted invoices.
+</Warning>
+
+## Manual update via Frappe console
+
+You can trigger catalog updates at any time without running a full migration. Open a Frappe console with `bench console` and enqueue the individual update functions:
+
+```python
+import frappe
+from erpnext_mexico_compliance import sat
+
+# Update standard-size catalogs (default queue)
+frappe.enqueue(sat.update_tax_regimes)
+frappe.enqueue(sat.update_cfdi_uses)
+frappe.enqueue(sat.update_payment_methods)
+frappe.enqueue(sat.update_payment_options)
+frappe.enqueue(sat.update_relationship_types)
+
+# Large catalogs — must use the long queue
+frappe.enqueue(sat.update_product_or_service_keys, queue="long")
+frappe.enqueue(sat.update_units_of_measure, queue="long")
+```
+
+Each call returns immediately; the actual work runs in a background worker. Monitor progress in **Background Jobs** (ERPNext menu → Settings → Background Jobs).
+
+## Using CatalogManager directly
+
+For scripted or synchronous updates (e.g., in a migration fixture or a custom management command), you can call `CatalogManager` directly without the background queue:
+
+```python
+from erpnext_mexico_compliance.sat.catalogs import CatalogManager
+
+with CatalogManager() as manager:
+    manager.update_doctype("SAT Tax Regime")
+    manager.update_doctype("SAT CFDI Use")
+```
+
+Using `CatalogManager` as a context manager ensures the SQLite connection is closed and the temporary database file is removed even if an exception occurs. Each `update_doctype()` call ends with a `frappe.db.commit()`, so partial progress is saved if a subsequent call fails.
+
+The full set of supported values for `update_doctype()` is:
+
+| Argument value | DocType updated |
+|---|---|
+| `"SAT CFDI Use"` | SAT CFDI Use |
+| `"SAT Payment Option"` | SAT Payment Option |
+| `"SAT Payment Method"` | SAT Payment Method |
+| `"SAT Product or Service Key"` | SAT Product or Service Key |
+| `"SAT Relationship Type"` | SAT Relationship Type |
+| `"SAT Tax Regime"` | SAT Tax Regime |
+| `"SAT UOM Key"` | SAT UOM Key |
+
+Passing any other string raises a `ValueError`.
+
+<Tip>
+  Run catalog updates after each `bench migrate` when upgrading the app. New app versions may
+  reference catalog entries that the SAT published after your previous installation — running the
+  update ensures those entries exist in your ERPNext instance before users encounter them in
+  invoice forms.
+</Tip>

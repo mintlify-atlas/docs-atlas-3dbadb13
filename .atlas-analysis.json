@@ -1,0 +1,121 @@
+{
+  "projectType": "framework",
+  "projectName": "ERPNext Mexico Compliance",
+  "projectDescription": "A Frappe/ERPNext app that adds Mexican tax authority (SAT) compliance to ERPNext, including CFDI 4.0 stamping, cancellation, and SAT catalog management.",
+  "theme": "maple",
+  "primaryColor": "#eaec54",
+  "lightColor": "#6cccf4",
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "CFDI Stamping",
+            "pages": [
+              "cfdi/overview",
+              "cfdi/sales-invoice-stamping",
+              "cfdi/payment-entry-stamping",
+              "cfdi/cancellation"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/stamping-settings",
+              "configuration/digital-signing-certificate",
+              "configuration/pdf-email-templates"
+            ]
+          },
+          {
+            "group": "SAT Catalogs",
+            "pages": [
+              "catalogs/overview",
+              "catalogs/updating-catalogs"
+            ]
+          },
+          {
+            "group": "Compliance Fields",
+            "pages": [
+              "fields/overview",
+              "fields/customer-fields",
+              "fields/invoice-fields"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Reference",
+        "groups": [
+          {
+            "group": "DocTypes",
+            "pages": [
+              "reference/cfdi-stamping-settings",
+              "reference/digital-signing-certificate",
+              "reference/sat-catalogs-doctypes"
+            ]
+          },
+          {
+            "group": "Hooks & Extensions",
+            "pages": [
+              "reference/document-hooks",
+              "reference/scheduled-jobs",
+              "reference/validators"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/docker",
+              "deployment/troubleshooting"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "CFDI 4.0 stamping for Sales Invoices and Payment Entries via TI Sin Problemas web service",
+    "CFDI cancellation with SAT-compliant cancellation reasons and substitute document linking",
+    "Automatic stamping on document submit with configurable Default CSD per company",
+    "Hourly scheduled job to poll and reconcile CFDI cancellation status",
+    "SAT catalog management (Tax Regimes, CFDI Uses, Payment Methods, Product/Service Keys, UOM Keys, Relationship Types)",
+    "Custom compliance fields on Customer, Company, Item, Sales Invoice, Payment Entry, UOM, and more",
+    "RFC and CURP validation utilities",
+    "Custom PDF and email templates for stamped CFDI documents (premium feature)",
+    "Addenda support for custom XML content in CFDI documents",
+    "before_stamp_cfdi / after_stamp_cfdi document event hooks for extensibility",
+    "Docker-based development environment",
+    "Crowdin-backed Spanish (es / es_MX) translations"
+  ],
+  "publicApiSurface": [
+    "CommonController.stamp_cfdi(certificate: str)",
+    "CommonController.cancel_cfdi(certificate: str, substitute_field: str)",
+    "CommonController.check_cancellation_status()",
+    "CommonController.download_cfdi_files()",
+    "CommonController.view_pdf()",
+    "CommonController.get_cfdi_voucher(csd: DigitalSigningCertificate) -> cfdi40.Comprobante",
+    "SalesInvoice.cancel(certificate: str)",
+    "controllers.communication.send_email(..., attach_cfdi_files: bool)",
+    "controllers.queries.cfdi_use_query(doctype, txt, searchfield, start, page_len, filters)",
+    "controllers.validators.is_valid_rfc(rfc: str) -> bool",
+    "controllers.validators.is_valid_curp(curp: str) -> bool",
+    "sat.catalogs.CatalogManager.update_doctype(doctype: str)",
+    "ws_client.client.APIClient.stamp(cfdi: CFDI) -> dict",
+    "ws_client.client.APIClient.cancel_cfdi(signing_certificate, cfdi, reason, substitute_uuid)",
+    "ws_client.client.APIClient.get_status(cfdi: CFDI) -> CfdiStatus",
+    "ws_client.client.APIClient.get_subscription() -> dict",
+    "ws_client.models.CfdiStatus (dataclass with DocumentStatus, CancellableStatus, CancellationStatus enums)",
+    "tasks.check_cancellation_status() [scheduler: hourly]",
+    "Document event hooks: before_stamp_cfdi, after_stamp_cfdi"
+  ]
+}

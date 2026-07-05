@@ -1,0 +1,105 @@
+---
+title: "Sales Invoice and Item Fields for CFDI Generation"
+sidebarTitle: "Invoice Fields"
+description: "Reference for the SAT-required custom fields added to Sales Invoice, Sales Invoice Item, Mode of Payment, and UOM DocTypes."
+---
+
+Sales Invoices require several SAT-specific fields to generate a valid CFDI Ingreso document. These fields are added as Custom Fields and are validated before the app submits a stamp request to the PAC. Each field maps directly to an element or attribute in the CFDI 4.0 XML schema — leaving any required field empty will block stamping with a descriptive validation error.
+
+## Sales Invoice fields
+
+The following Custom Fields are added to the **Sales Invoice** DocType:
+
+| Field | Internal Name | Type | Description |
+|---|---|---|---|
+| Mode of Payment | `mode_of_payment` | Link → Mode of Payment | Payment form used for this invoice; its linked SAT Payment Method is fetched automatically into `mx_payment_mode` |
+| SAT Payment Option | `mx_payment_option` | Link → SAT Payment Option | PUE (Pago en una sola exhibición — single payment) or PPD (Pago en parcialidades o diferido — partial or deferred payment) |
+| SAT CFDI Use | `mx_cfdi_use` | Link → SAT CFDI Use | Purpose of the CFDI for the receiver; overrides the default CFDI Use set on the Customer record for this specific invoice |
+| SAT Payment Method | `mx_payment_mode` | Data | Auto-populated from the Mode of Payment's `sat_payment_method` field; read-only on the invoice form |
+| Stamped XML | `mx_stamped_xml` | HTML Editor | Full CFDI XML returned by the PAC stamping service, including the `TimbreFiscalDigital` complement |
+| CFDI UUID | `mx_uuid` | Data | UUID extracted from the `TimbreFiscalDigital` complement after stamping; read-only and shown in the list view |
+| CFDI Status | `mx_cfdi_status` | Literal | Reflects the current state of the CFDI: `Valid`, `Pending Cancellation`, or `Cancelled` |
+| Cancellation Reason | `cancellation_reason` | Link → Cancellation Reason | Required before cancelling a stamped invoice; maps to the SAT motivo de cancelación |
+| Substitute Invoice | `substitute_invoice` | Link → Sales Invoice | Required when the selected Cancellation Reason demands a replacement CFDI (`requires_relationship = 1`) |
+| Cancellation Acknowledgement | `cancellation_acknowledgement` | HTML Editor | XML acknowledgement returned by the SAT after a cancellation request is processed |
+| Addenda | `mx_addenda` | HTML Editor | Custom XML injected into the CFDI `<cfdi:Addenda>` element for this invoice specifically; takes precedence over the customer-level Addenda template |
+| Related Sales Invoices | `mx_related_sales_invoices` | Table | Child table of `RelatedSalesInvoice` rows, each linking a related CFDI UUID with a SAT relationship type (e.g., sustitución, nota de crédito) |
+
+<Note>
+  The `mx_uuid` field is included in the Sales Invoice list view and is indexed for standard filters, making it easy to search for a specific CFDI by UUID without opening each record.
+</Note>
+
+### Related Sales Invoices
+
+The `mx_related_sales_invoices` child table lets you declare `cfdiRelacionados` entries in the CFDI. Each row holds:
+
+- **Sales Invoice** — the ERPNext Sales Invoice whose stamped UUID you want to reference.
+- **SAT Relationship Type** — the catalog code describing how the two CFDIs are related (e.g., `04` for substitution, `01` for nota de crédito).
+
+The stamping engine groups rows by relationship type and builds one `<cfdi40:CfdiRelacionados>` element per type, each containing the relevant UUIDs. If a referenced Sales Invoice has not been stamped yet (no UUID), saving the invoice is blocked with the error **"Related Sales Invoice {name} has not been stamped"**.
+
+## Sales Invoice Item fields
+
+The following Custom Field is added to the **Sales Invoice Item** child DocType:
+
+| Field | Internal Name | Description |
+|---|---|---|
+| SAT Product or Service Key | `mx_product_service_key` | SAT catalog key for the product or service sold; maps to `ClaveProdServ` in the CFDI `Concepto` element |
+
+When an item is added to a Sales Invoice, the override's `before_validate` hook automatically copies `mx_product_service_key` from the parent **Item** record if the field is empty on the invoice line. This means you only need to configure the key once on the Item master, and it propagates to new invoice lines automatically.
+
+## Mode of Payment fields
+
+The following Custom Field is added to the **Mode of Payment** DocType:
+
+| Field | Internal Name | Description |
+|---|---|---|
+| SAT Payment Method | `sat_payment_method` | Links the Mode of Payment to the SAT Forma de Pago catalog (e.g., `01` = Cash, `03` = Electronic transfer, `04` = Credit card) |
+
+When the Mode of Payment is selected on a Sales Invoice, the value of `sat_payment_method` is fetched automatically into the invoice's read-only `mx_payment_mode` field via a `fetch_from` declaration in the fixture. This means the SAT payment method on the invoice always reflects the catalogue entry linked to the mode of payment.
+
+## UOM fields
+
+The following Custom Field is added to the **UOM** (Unit of Measure) DocType:
+
+| Field | Internal Name | Description |
+|---|---|---|
+| SAT UOM Key | `mx_uom_key` | Links the unit of measure to the SAT Clave de Unidad catalog; maps to `ClaveUnidad` in the CFDI `Concepto` element |
+
+The `mx_uom_key` field is a Link to the `SAT UOM Key` DocType and appears in the UOM list view for quick identification of unmapped units.
+
+## Other DocType fields
+
+The app adds compliance fields to several other DocTypes that feed into the CFDI generation pipeline:
+
+| DocType | Field | Description |
+|---|---|---|
+| Account | Tax Type | Select field with options `IVA`, `ISR`, and `IEPS`; visible only when the account type is `Tax`. Used to classify tax accounts so the stamping engine can build the `cfdi40.Impuestos` (transferred and withheld taxes) section of each CFDI `Concepto`. |
+| Bank Account | CLABE | 18-digit Clave Bancaria Estandarizada; stored under the field name `clabe` on the Bank Account DocType. |
+| Subscription | Mode of Payment | Link to Mode of Payment (`mx_mode_of_payment`); propagated to Sales Invoices generated by the subscription. |
+| Subscription | SAT Payment Option | Link to SAT Payment Option (`mx_sat_payment_option`); propagated to subscription-generated Sales Invoices. |
+| Sales Order Item | SAT Product or Service Key | `mx_product_service_key` on the Sales Order Item child table; pre-populates the corresponding field when a Sales Invoice is created from the Sales Order. |
+
+## Item validation
+
+Before the stamping engine sends a CFDI to the PAC, the `SalesInvoice.validate_items()` method calls `validate()` on every `SalesInvoiceItem` row. The validation enforces the following rules:
+
+<Steps>
+  <Step title="SAT Product or Service Key must be set">
+    Every item row must have a non-empty `mx_product_service_key`. If missing, the error **"Item {item_code} at row {n} does not have a SAT Product or Service Key"** is thrown and stamping is blocked.
+  </Step>
+  <Step title="UOM must have a SAT UOM Key">
+    The UOM linked to each item row must have a non-empty `mx_uom_key`. If missing, the error **"UOM {uom} at row {n} does not have a SAT UOM Key"** is thrown and stamping is blocked.
+  </Step>
+  <Step title="Zero-amount items are excluded">
+    Items where `amount == 0` are silently excluded from the `cfdi40.Concepto` list sent to the PAC. They are not validated for product/service key or UOM key because they will not appear in the stamped XML.
+  </Step>
+</Steps>
+
+<Warning>
+  Items with a non-zero amount will fail stamping if either `mx_product_service_key` or the UOM's `mx_uom_key` is blank. Ensure both the **Item** master and the **UOM** master are fully configured before submitting a Sales Invoice for stamping.
+</Warning>
+
+<Tip>
+  You can bulk-check which Items are missing a SAT Product or Service Key and which UOMs are missing a SAT UOM Key by using ERPNext's standard **Report** views on the `Item` and `UOM` DocTypes and filtering for empty `mx_product_service_key` or `mx_uom_key` values respectively.
+</Tip>

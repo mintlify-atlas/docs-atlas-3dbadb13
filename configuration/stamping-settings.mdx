@@ -1,0 +1,103 @@
+---
+title: "Configure CFDI Stamping Settings in ERPNext"
+sidebarTitle: "Stamping Settings"
+description: "Set up API credentials, test mode, auto-stamp behavior, low credits warnings, and email notifications in CFDI Stamping Settings."
+---
+
+CFDI Stamping Settings is a singleton DocType — there is exactly one instance per ERPNext site — that controls all aspects of CFDI stamping behavior. It centralizes your web service credentials, auto-stamp rules, default signing certificates, credit alerts, and premium email features in one place.
+
+Navigate to **Mexico Compliance → CFDI Stamping Settings** to open the form.
+
+---
+
+## Web service credentials
+
+Enter the credentials provided by TI Sin Problemas when you purchased a stamps package. Both fields are required before any CFDI can be stamped.
+
+| Field | Type | Description |
+|---|---|---|
+| API Key | Data | Your API key issued by TI Sin Problemas |
+| API Secret | Password | Your API secret issued by TI Sin Problemas |
+| Test Mode | Check | Default: **enabled**. Disable only in production environments |
+
+<Warning>
+  Keep **Test Mode** enabled during development and testing. Stamps consumed in
+  test mode do not deduct from your credit balance, but the resulting CFDIs are
+  marked as test-only and are **not valid for SAT submission**. Disable Test
+  Mode only when you are ready to issue legally-valid production CFDIs.
+</Warning>
+
+When Test Mode is enabled, the app connects to `https://cfdi.tisp-staging.com`. When disabled, it connects to `https://tisinproblemas.com`.
+
+<Note>
+  The API Key and API Secret can also be set via site configuration keys
+  `cfdi_api_key` and `cfdi_api_secret`. When a value is present in the site
+  config, it takes precedence over what is entered in the form and can only be
+  changed by the site administrator.
+</Note>
+
+---
+
+## Stamp behavior
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| Stamp on submit | Check | Off | Automatically stamps documents when they are submitted |
+| Default Digital Signing Certificates | Table | — | Default CSD per company, used when auto-stamping on submit |
+
+When **Stamp on submit** is enabled, the **Default Digital Signing Certificates** table becomes mandatory. Each row maps a **Company** to a **Digital Signing Certificate** (CSD). When a document is submitted, the app uses the CSD associated with the document's company to sign and stamp it automatically.
+
+If a company does not have a matching row in this table, submitting a document for that company will fail. Add one row per company that issues CFDIs.
+
+---
+
+## Low credits warning
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| Enable Low Credits Warning | Check | On | Show an alert banner when available credits fall at or below the threshold |
+| Low Credits Threshold | Int | 50 | The credit level that triggers the warning |
+
+When **Enable Low Credits Warning** is active, the app checks your available credits after each stamp operation. If the remaining credits are less than **Low Credits Threshold**, an orange alert banner is shown to the user. The **Low Credits Threshold** field is only visible when the warning is enabled.
+
+---
+
+## Checking available credits
+
+To query the current credit balance at any time, open the **CFDI Stamping Settings** form and click the **Available Credits** button in the form toolbar. The app calls the web service and displays the current available stamp count.
+
+---
+
+## Premium features
+
+The **Is Premium** field is a virtual (computed) field. It is automatically set to `true` when the API credentials are valid and the associated subscription has an active premium plan — you cannot set it manually. Premium status is cached for 12 hours.
+
+When **Is Premium** is active, the **Premium Features** section of the form becomes visible and unlocks:
+
+- **Custom PDF templates** — per-company, per-document-type Jinja HTML templates for branded CFDI PDFs.
+- **Automatic email sending** — automatically email stamped CFDI files to the customer's contacts after stamping.
+
+See [PDF & Email Templates](/configuration/pdf-email-templates) for detailed setup instructions.
+
+---
+
+## Email on stamp (premium)
+
+The following fields are only visible when **Is Premium** is active.
+
+| Field | Description |
+|---|---|
+| Send email on stamp | Enable automatic email dispatch after a document is successfully stamped |
+| Send email to | Controls which contacts receive the email: **All Billing Contacts** or **Document Contact** |
+| Email Templates | A table of per-document-type ERPNext Email Templates used as the email subject and body |
+
+When **Send email on stamp** is enabled, the **Send email to** field becomes mandatory. The **Email Templates** table is also mandatory and must contain at least one row for each document type you intend to stamp automatically.
+
+The email is sent immediately after a successful stamp operation. The attached ZIP file contains the stamped XML and the rendered PDF (using the custom PDF template, if one is configured for that company and document type).
+
+<Tip>
+  You can also send CFDI files manually at any time using the standard ERPNext
+  email dialog on the Sales Invoice or Payment Entry form. The app adds an
+  **Attach CFDI Files** checkbox to the compose window — checking it
+  automatically attaches the stamped ZIP file to the outgoing email.
+</Tip>

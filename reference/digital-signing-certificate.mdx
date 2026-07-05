@@ -1,0 +1,145 @@
+---
+title: "Digital Signing Certificate DocType Reference"
+sidebarTitle: "Signing Certificate"
+description: "Field reference for the Digital Signing Certificate DocType — stores CSD .cer and .key files per company for CFDI signing."
+---
+
+`Digital Signing Certificate` stores the SAT-issued Certificado de Sello Digital (CSD) for each company. Each record holds the `.cer` certificate file, the `.key` private key file, and the password needed to cryptographically sign CFDI documents. The `satcfdi` library's `Signer` class is loaded from these three inputs at signing time.
+
+<Note>
+  The certificate, key, and password are all marked `no_copy`, so duplicating a Digital Signing Certificate record will not transfer the files or password to the copy. You must re-upload the files on each new record.
+</Note>
+
+---
+
+## Auto-naming
+
+Records are named using the expression `format:{company}-{##}`, which produces sequential identifiers such as `ACME SA de CV-001`, `ACME SA de CV-002`, and so on. This makes it straightforward to maintain multiple certificates per company (e.g., during a certificate rotation).
+
+---
+
+## Fields reference
+
+<ParamField path="company" type="Link → Company" required>
+  The ERPNext Company for which this Digital Signing Certificate will be used to sign CFDIs. Each company can have multiple certificate records, but only the record assigned in **CFDI Stamping Settings → Default Digital Signing Certificates** is used for automatic stamping.
+</ParamField>
+
+<ParamField path="certificate" type="Attach">
+  The `.cer` binary certificate file issued by the SAT. Upload the file directly from the SAT portal (*Certificados → Descarga*). This file is not copied when duplicating the record.
+</ParamField>
+
+<ParamField path="key" type="Attach">
+  The `.key` private key file issued by the SAT alongside the `.cer` certificate. This file is not copied when duplicating the record.
+</ParamField>
+
+<ParamField path="password" type="Password">
+  The password used to decrypt the `.key` private key file. Stored encrypted via Frappe's password field mechanism. This field is not copied when duplicating the record. The decrypted value is retrieved at signing time via `get_password("password")`.
+</ParamField>
+
+---
+
+## Triad validation
+
+The certificate is considered **complete** only when all three of `certificate`, `key`, and `password` are set (`triad_is_complete`). When the triad is complete, the `validate` hook attempts to build a `Signer` object; if the files or password are invalid (e.g., mismatched certificate/key pair), a `frappe.ValidationError` is raised and the record cannot be saved.
+
+You can also trigger validation on demand from the form using the **Validate Certificate** button, which calls the `validate_certificate()` whitelisted method and displays a green confirmation showing the legal name, RFC, and branch name extracted from the certificate.
+
+<Tip>
+  Use **Validate Certificate** after uploading new files to confirm the triad is correct before assigning the record as a Default CSD.
+</Tip>
+
+---
+
+## Python methods
+
+The following methods are available on a `DigitalSigningCertificate` document instance. They are used internally by the stamping pipeline.
+
+### `get_issuer() → Emisor`
+
+Builds a `satcfdi.create.cfd.cfdi40.Emisor` object from the certificate data and the company's configured tax regime. The `rfc` and `legal_name` are extracted directly from the certificate via the `signer` property. The `regimen_fiscal` is read from the linked Company's `mx_tax_regime` field.
+
+```python
+csd = frappe.get_doc("Digital Signing Certificate", "ACME SA de CV-001")
+emisor = csd.get_issuer()
+# emisor.rfc, emisor.nombre, emisor.regimen_fiscal are populated
+```
+
+Raises a `frappe.ValidationError` with a link to the Company record if `mx_tax_regime` is not set on the company.
+
+**Returns:** `satcfdi.create.cfd.cfdi40.Emisor`
+
+---
+
+### `get_key_b64() → str`
+
+Reads the `.key` file from Frappe's file storage and returns its contents encoded as a Base64 string. Used when the raw Base64-encoded key is needed for external API calls.
+
+```python
+csd = frappe.get_doc("Digital Signing Certificate", "ACME SA de CV-001")
+key_b64: str = csd.get_key_b64()
+```
+
+**Returns:** `str` — Base64-encoded content of the `.key` file.
+
+---
+
+### `get_certificate_b64() → str`
+
+Reads the `.cer` file from Frappe's file storage and returns its contents encoded as a Base64 string. Used when the raw Base64-encoded certificate is needed for external API calls.
+
+```python
+csd = frappe.get_doc("Digital Signing Certificate", "ACME SA de CV-001")
+cert_b64: str = csd.get_certificate_b64()
+```
+
+**Returns:** `str` — Base64-encoded content of the `.cer` file.
+
+---
+
+### `signer` (property) → `Signer | None`
+
+Loads and returns a `satcfdi.models.Signer` object initialised with the certificate bytes, key bytes, and decrypted password. Returns `None` if the triad is not complete (any of `certificate`, `key`, or `password` is missing). Raises `frappe.ValidationError` with the title `"Invalid Signing Certificate"` if the files exist but the `Signer` cannot be constructed (e.g., wrong password, corrupted file).
+
+```python
+csd = frappe.get_doc("Digital Signing Certificate", "ACME SA de CV-001")
+voucher.sign(csd.signer)
+```
+
+**Returns:** `satcfdi.models.Signer | None`
+
+---
+
+### `validate_certificate()` *(whitelisted)*
+
+Validates the digital signing certificate interactively. If `signer` is not `None`, displays a green `frappe.msgprint` dialog listing the branch name, legal name, and RFC extracted from the certificate. No return value; intended for use from the Frappe form UI.
+
+```python
+# Triggered via the form button or frappe.call
+csd = frappe.get_doc("Digital Signing Certificate", "ACME SA de CV-001")
+csd.validate_certificate()
+```
+
+---
+
+### Additional read-only properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `legal_name` | `str \| None` | Legal name encoded in the certificate (`signer.legal_name`). `None` if triad is incomplete. |
+| `rfc` | `str \| None` | RFC encoded in the certificate (`signer.rfc`). `None` if triad is incomplete. |
+| `branch_name` | `str \| None` | Branch name encoded in the certificate (`signer.branch_name`). `None` if triad is incomplete. |
+| `triad_is_complete` | `bool` | `True` when all three of `certificate`, `key`, and `password` are set. |
+
+---
+
+## Permissions
+
+| Role | Read | Write | Create | Delete |
+|------|------|-------|--------|--------|
+| System Manager | ✓ | ✓ | ✓ | ✓ |
+| Accounts Manager | ✓ | ✓ | ✓ | ✓ |
+| Accounts User | ✓ | — | — | — |
+
+<Note>
+  Accounts Users can view existing certificate records (for linking purposes) but cannot create, modify, or delete them.
+</Note>

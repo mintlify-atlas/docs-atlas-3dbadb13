@@ -1,0 +1,117 @@
+---
+title: "Scheduled Jobs for CFDI Cancellation Status Checks"
+sidebarTitle: "Scheduled Jobs"
+description: "ERPNext Mexico Compliance runs an hourly job that polls the SAT to reconcile CFDI cancellation status for pending Sales Invoices and Payment Entries."
+---
+
+ERPNext Mexico Compliance registers one scheduled job that automatically reconciles CFDI cancellation status with the SAT web service. The job is declared in `hooks.py` under `scheduler_events` and is managed entirely by the Frappe background worker infrastructure — no manual cron setup is required.
+
+## check_cancellation_status (hourly)
+
+| Property | Value |
+|---|---|
+| Function | `erpnext_mexico_compliance.tasks.check_cancellation_status` |
+| Frequency | Hourly |
+| Queue | Default (short) |
+
+This job queries every `Sales Invoice` and every `Payment Entry` whose `mx_cfdi_status` field equals `"Pending Cancellation"`. For each matching document it calls `update_cancellation_status()`, which contacts the SAT web service and automatically cancels the document in ERPNext if the SAT confirms the cancellation.
+
+```python tasks.py
+def check_cancellation_status():
+    """Checks the cancellation status of Sales Invoices and Payment Entries."""
+    FILTERS = {"mx_cfdi_status": CFDIStatus.PENDING_CANCELLATION}
+
+    invoices = frappe.get_all("Sales Invoice", fields=["name"], filters=FILTERS)
+    for i in invoices:
+        si = frappe.get_doc("Sales Invoice", i.name)
+        si.update_cancellation_status()
+
+    payments = frappe.get_all("Payment Entry", fields=["name"], filters=FILTERS)
+    for p in payments:
+        pe = frappe.get_doc("Payment Entry", p.name)
+        pe.update_cancellation_status()
+```
+
+<Note>
+The job processes every site individually. If your Frappe installation serves multiple sites, each site runs its own scheduler — there is no cross-site leakage.
+</Note>
+
+## update_cancellation_status logic
+
+`update_cancellation_status()` is defined on `CommonController`, the shared base class for both `SalesInvoice` and `PaymentEntry`. The sequence is:
+
+<Steps>
+  <Step title="Fetch SAT status">
+    Instantiates the configured web service client and calls `ws.get_status(cfdi)`, passing the parsed CFDI object. The web service returns a `CfdiStatus` dataclass instance.
+  </Step>
+  <Step title="Handle NOT_CANCELLABLE">
+    If `status.is_cancellable == CancellableStatus.NOT_CANCELLABLE`, the document is no longer eligible for cancellation. The method sets `mx_is_cancellable = 0` and `mx_cfdi_status = "Valid"`, then saves the document. No cancellation takes place.
+  </Step>
+  <Step title="Handle CANCELLED">
+    If `status.status == DocumentStatus.CANCELLED`, the SAT has confirmed the cancellation. The method sets `mx_cfdi_status = "Cancelled"` and calls the document's internal `_cancel()` method, which cancels the ERPNext document and all linked entries.
+  </Step>
+</Steps>
+
+```python controllers/common.py (excerpt)
+def update_cancellation_status(self):
+    ws = get_ws_client()
+    status = ws.get_status(self.mx_cfdi_obj)
+
+    if status.is_cancellable == status.CancellableStatus.NOT_CANCELLABLE:
+        self.mx_is_cancellable = 0
+        self.mx_cfdi_status = CFDIStatus.VALID.value
+        self.save()
+
+    if status.status == status.DocumentStatus.CANCELLED:
+        self.flags.ignore_links = True
+        self.mx_cfdi_status = CFDIStatus.CANCELLED.value
+        self._cancel()
+```
+
+<Note>
+`self.flags.ignore_links = True` is set before `_cancel()` so that linked documents (e.g. payment reconciliations) do not block the ERPNext cancellation when the SAT has already confirmed the CFDI is cancelled.
+</Note>
+
+## Manual status check
+
+In addition to the automated hourly job, any user with document write access can trigger an on-demand status check directly from the Sales Invoice or Payment Entry form by clicking the **Check Cancellation Status** button. This calls the whitelisted `check_cancellation_status` method on the document, which displays the raw SAT response in a popup (CFDI code, document status, cancellability, and cancellation status) before calling `update_cancellation_status()` if the SAT reports the document as cancelled.
+
+## CfdiStatus model
+
+The `ws_client.models` module defines the `CfdiStatus` dataclass and its nested enums. These are the canonical status values used throughout the app when interacting with the SAT web service.
+
+```python ws_client/models.py
+class CfdiStatus:
+    class CancellableStatus(Enum):
+        CANCELLABLE_BY_APPROVAL   = "Cancelable con aceptación"
+        CANCELLABLE_BY_DIRECT_CALL = "Cancelable sin aceptación"
+        NOT_CANCELLABLE           = "No cancelable"
+
+    class DocumentStatus(StrEnum):
+        ACTIVE    = "Vigente"
+        CANCELLED = "Cancelado"
+
+    class CancellationStatus(Enum):
+        CANCELLED_BY_APPROVAL   = "Cancelado con aceptación"
+        CANCELLED_BY_DIRECT_CALL = "Cancelado sin aceptación"
+        CANCELLED_BY_EXPIRATION = "Plazo vencido"
+        PENDING                 = "En proceso"
+        REJECTED                = "Solicitud rechazada"
+
+    code: str
+    is_cancellable: CancellableStatus | None
+    status: DocumentStatus | str
+    cancellation_status: CancellationStatus | None
+```
+
+The `code` field holds the raw SAT response code returned by the web service. `is_cancellable` and `cancellation_status` may be `None` when the SAT does not return those fields (for example, when a CFDI has never had a cancellation request submitted).
+
+### Internal CFDI status values
+
+The `CFDIStatus` string enum in `controllers/common.py` maps to the `mx_cfdi_status` field stored on the ERPNext document:
+
+| CFDIStatus value | `mx_cfdi_status` field | Meaning |
+|---|---|---|
+| `CFDIStatus.VALID` | `"Valid"` | CFDI is active and valid with the SAT |
+| `CFDIStatus.PENDING_CANCELLATION` | `"Pending Cancellation"` | Cancellation request submitted; awaiting SAT confirmation |
+| `CFDIStatus.CANCELLED` | `"Cancelled"` | SAT has confirmed cancellation; document is cancelled in ERPNext |

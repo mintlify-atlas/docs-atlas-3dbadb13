@@ -1,0 +1,155 @@
+---
+title: "Stamp Sales Invoices as CFDI Ingreso Documents"
+sidebarTitle: "Sales Invoice"
+description: "Configure and stamp ERPNext Sales Invoices as SAT-compliant CFDI 4.0 Ingreso documents, including requirements, field mapping, and addenda support."
+---
+
+Sales Invoices are stamped as CFDI **Tipo Ingreso** documents (`TipoDeComprobante.INGRESO`). When a Sales Invoice is stamped, the app assembles a `cfdi40.Comprobante` from the invoice data, signs it with the selected Digital Signing Certificate, and sends it to the TI Sin Problemas web service for PAC stamping. The resulting UUID and stamped XML are stored directly on the Sales Invoice record.
+
+---
+
+## Requirements
+
+All of the following conditions must be satisfied before a Sales Invoice can be stamped:
+
+<ul>
+  <li>The **Company address** must have a Zip Code (`pincode` on the Address DocType).</li>
+  <li>The **Customer** must have a valid Mexican Tax ID (RFC) in the `tax_id` field.</li>
+  <li>The **Customer** must have a **SAT Tax Regime** (`mx_tax_regime`) set.</li>
+  <li>The **Customer's billing address** must have a Zip Code.</li>
+  <li>Every **Invoice Item** must have a **SAT Product or Service Key** (`mx_product_service_key`).</li>
+  <li>The **UOM** of every Invoice Item must have a **SAT UOM Key** (`mx_uom_key`).</li>
+  <li>The **Mode of Payment** on the invoice must have a **SAT Payment Method** code assigned.</li>
+  <li>The invoice must have a **SAT Payment Option** (`mx_payment_option`) selected.</li>
+  <li>At least **one Digital Signing Certificate** must exist for the Company issuing the invoice.</li>
+  <li>You must have available **stamp credits** in your TI Sin Problemas account.</li>
+</ul>
+
+<Warning>
+  Items with a zero amount are skipped when building the CFDI `Conceptos` list. All non-zero items must individually satisfy the SAT key requirements above.
+</Warning>
+
+---
+
+## Stamping a Sales Invoice
+
+<Steps>
+  <Step title="Submit the Sales Invoice">
+    Complete and submit the Sales Invoice in ERPNext as you normally would. The document must reach **Submitted** status before it can be stamped.
+  </Step>
+  <Step title="Locate the Stamp CFDI button">
+    Once the invoice is submitted, a **Stamp CFDI** button appears on the form. This button is only visible on submitted, un-stamped invoices.
+  </Step>
+  <Step title="Select the Digital Signing Certificate">
+    If prompted, select the Digital Signing Certificate (CSD) to use for this invoice. Only certificates associated with the invoice's Company are shown.
+  </Step>
+  <Step title="Click Stamp CFDI">
+    The app validates the company address, customer details, and all line items, then signs the CFDI and posts it to `tisp_apps.api.v1.cfdi.stamp`. If any validation fails, a descriptive error is shown before any API call is made.
+  </Step>
+  <Step title="Stamping succeeds">
+    On success, the `mx_stamped_xml` field is populated with the full SAT-stamped XML (including the `TimbreFiscalDigital` complement), `mx_uuid` is set to the CFDI UUID, and `mx_cfdi_status` becomes **Valid**. A green confirmation alert is displayed.
+  </Step>
+</Steps>
+
+<Note>
+  If `stamp_on_submit` is enabled in CFDI Stamping Settings, steps 2–5 happen automatically at the moment of submission. See the next section for details.
+</Note>
+
+---
+
+## Auto-stamp on submit
+
+In **CFDI Stamping Settings**, the **Stamp on Submit** (`stamp_on_submit`) toggle controls automatic stamping. When enabled, the `on_submit` hook of the Sales Invoice override fires immediately after the document is submitted:
+
+```python
+settings: CFDIStampingSettings = frappe.get_single("CFDI Stamping Settings")
+if settings.stamp_on_submit:
+    csd = frappe.get_value("Default CSD", {"company": self.company}, "csd")
+    try:
+        self.stamp_cfdi(csd)
+    except Exception as e:
+        frappe.msgprint(str(e), title=_("CFDI Stamping Error"))
+```
+
+The certificate used is the **Default CSD** configured for the Company in CFDI Stamping Settings. If stamping fails for any reason (validation error, network issue, insufficient credits), a warning message is shown but **the submission itself is not rolled back** — the invoice remains submitted so you can correct the issue and stamp manually.
+
+---
+
+## CFDI field mapping
+
+The table below shows how ERPNext fields are translated into CFDI 4.0 XML elements when the `get_cfdi_voucher` method assembles the `cfdi40.Comprobante`:
+
+| ERPNext Field | CFDI Element |
+|---|---|
+| Company (Emisor RFC from CSD) | `Emisor/Rfc` |
+| Company Address Zip Code | `LugarExpedicion` |
+| Customer Tax ID (`tax_id`) | `Receptor/Rfc` |
+| Customer Name — uppercased | `Receptor/Nombre` |
+| Customer Address Zip Code | `Receptor/DomicilioFiscalReceptor` |
+| Customer SAT Tax Regime (`mx_tax_regime`) | `Receptor/RegimenFiscalReceptor` |
+| SAT CFDI Use (`mx_cfdi_use`) | `Receptor/UsoCFDI` |
+| SAT Payment Option (`mx_payment_option`) | `MetodoPago` |
+| SAT Payment Method (`mx_payment_mode`) | `FormaPago` |
+| Currency | `Moneda` |
+| Conversion Rate (when not MXN) | `TipoCambio` |
+| Posting Date + Posting Time | `Fecha` |
+| Item SAT Product/Service Key | `Concepto/ClaveProdServ` |
+| Item UOM SAT Key | `Concepto/ClaveUnidad` |
+| Item Code | `Concepto/NoIdentificacion` |
+| Item Quantity | `Concepto/Cantidad` |
+| Item Unit Rate (before discount) | `Concepto/ValorUnitario` |
+| Item Discount Amount | `Concepto/Descuento` |
+
+---
+
+## Related Sales Invoices
+
+The `mx_related_sales_invoices` child table allows you to link one or more previously stamped CFDIs to the current invoice using an SAT relationship type (e.g., substitute for a cancelled invoice, credit note, etc.). Each row contains:
+
+- **Sales Invoice** — the related ERPNext Sales Invoice.
+- **UUID** — automatically read from the related invoice's `mx_uuid` field.
+- **SAT Relationship Type** — the SAT catalog code for the relationship (e.g., `04` for substitution).
+
+At validation time, the app checks that every row in `mx_related_sales_invoices` has a UUID. If any related invoice has not yet been stamped, saving the current invoice is blocked with an error.
+
+When the CFDI voucher is assembled, each unique relationship type becomes a `cfdi40.CfdiRelacionados` element containing the UUIDs for that type:
+
+```python
+related_documents = {}
+for rsi in self.mx_related_sales_invoices:
+    related_documents.setdefault(rsi.sat_relationship_type, []).append(rsi.uuid)
+
+cfdi_relacionados=[cfdi40.CfdiRelacionados(k, v) for k, v in related_documents.items()]
+```
+
+---
+
+## Addenda
+
+The SAT allows issuers to append custom XML content inside a `<cfdi:Addenda>` element. The app supports addenda at two levels:
+
+- **Customer-level** (`mx_addenda` on the Customer DocType) — default addenda applied to all invoices for that customer.
+- **Invoice-level** (`mx_addenda` on the Sales Invoice) — per-invoice addenda that overrides or supplements the customer default.
+
+The content of `mx_addenda` is treated as a **Jinja template** rendered with the current document as the `doc` context variable:
+
+```python
+rendered_addenda = frappe.render_template(self.mx_addenda, {"doc": self})
+```
+
+The rendered XML string is parsed and appended as a child of a `<cfdi:Addenda>` element inside the SAT namespace (`http://www.sat.gob.mx/cfd/4`). The addenda is injected into the stamped XML **after** the PAC stamps the document — the final `mx_stamped_xml` stored on the invoice includes the addenda.
+
+<Tip>
+  Use Jinja expressions like `{{ doc.customer }}` or `{{ doc.grand_total }}` inside your addenda template to embed document-specific values.
+</Tip>
+
+---
+
+## Download CFDI files
+
+Once a Sales Invoice is stamped, the **Download CFDI Files** button packages both the stamped XML and the rendered PDF into a ZIP archive named `{invoice_name}_CFDI.zip`. The archive contains:
+
+- `{invoice_name}_CFDI.xml` — the full SAT-stamped XML with `TimbreFiscalDigital`.
+- `{invoice_name}_CFDI.pdf` — the CFDI PDF representation.
+
+You can also use the **View PDF** button to open the PDF directly in the browser without downloading the archive.

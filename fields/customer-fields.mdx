@@ -1,0 +1,99 @@
+---
+title: "Configure Customer Fields for Mexican Tax Compliance"
+sidebarTitle: "Customer Fields"
+description: "Set SAT Tax Regime, CFDI Use, and Addenda on ERPNext Customer records to satisfy CFDI 4.0 Receptor requirements."
+---
+
+The CFDI 4.0 `Receptor` element requires the customer's RFC, fiscal address zip code, tax regime, and CFDI use code. ERPNext Mexico Compliance adds all of these fields to the ERPNext **Customer** DocType. Keeping them accurate on every Customer record is a prerequisite for successful invoice stamping — the app validates each value before it submits a stamp request to the PAC.
+
+## Customer compliance fields
+
+The following Custom Fields are added to the Customer DocType:
+
+| Field | Internal Name | Description |
+|---|---|---|
+| SAT Tax Regime | `mx_tax_regime` | The customer's fiscal tax regime (links to the SAT Tax Regime catalog) |
+| CFDI Use | `mx_cfdi_use` | Default CFDI use for this customer's invoices (links to the SAT CFDI Use catalog, filtered by the customer's tax regime) |
+| Addenda | `mx_addenda` | Jinja2 HTML template for custom content injected into the XML `<Addenda>` section of every CFDI stamped for this customer |
+
+## RFC validation
+
+The `Customer` override calls `is_valid_rfc()` from `erpnext_mexico_compliance.controllers.validators` every time a Customer record is saved, provided the customer's primary address is in Mexico and a Tax ID has been entered.
+
+The RFC must match the following regular expression, which covers both moral persons (12-character RFCs: 3 letters + 6-digit date + 3 alphanumeric) and natural persons (13-character RFCs: 4 letters + 6-digit date + 3 alphanumeric):
+
+```python
+r"^([A-ZÑ]|\&){3,4}[0-9]{2}(0[1-9]|1[0-2])([12][0-9]|0[1-9]|3[01])[A-Z0-9]{3}$"
+```
+
+If the Tax ID does not match the pattern, Frappe throws a validation error with the message **"Tax Id does not comply with SAT specifications"** and blocks the save.
+
+<Note>
+  The two generic SAT RFC values used for anonymous domestic customers (`XAXX010101000`) and foreign customers (`XEXX010101000`) are exempt from duplicate-RFC checks but are still validated against the regex pattern.
+</Note>
+
+The validator also prevents duplicate RFCs across Customer records. If another Customer already holds the same Tax ID, the save is blocked with the message **"Customer with Tax Id {RFC} already exists"**.
+
+When a valid RFC is saved on a Mexican customer, the override automatically normalises it to uppercase before storing it.
+
+## CFDI Use filtering
+
+The **CFDI Use** field on the Customer form (and on the Sales Invoice form) is filtered so that only CFDI use codes valid for the customer's selected tax regime are shown. This filtering is enforced server-side through a `cfdi_use_query` Link query, which consults the `SAT CFDI Use` catalog. Selecting a CFDI use that does not apply to the customer's tax regime would produce an invalid CFDI, so the field dynamically narrows the available options as soon as a tax regime is chosen.
+
+<Tip>
+  Set the customer's **SAT Tax Regime** first. The **CFDI Use** selector will then only show codes that are compatible with that regime, preventing data-entry errors before stamping.
+</Tip>
+
+## Addenda
+
+The **Addenda** field (`mx_addenda`) accepts a Jinja2 HTML template. When a Sales Invoice for this customer is stamped, the app renders the template and appends the result inside the CFDI XML `<cfdi:Addenda>` element. The `doc` variable inside the template refers to the **Sales Invoice** document being stamped, giving you access to all invoice fields and child tables.
+
+Example addenda template that includes the customer's purchase order number:
+
+```jinja
+<MiAddenda xmlns="http://www.miempresa.com/addenda">
+  <NumOrdenCompra>{{ doc.po_no }}</NumOrdenCompra>
+</MiAddenda>
+```
+
+On save, the Customer override parses `mx_addenda` as XML using `lxml`. If the root element does not declare a namespace, the app automatically assigns the SAT CFDI 4.0 namespace (`http://www.sat.gob.mx/cfd/4`) to the root and all its children before storing the value. This ensures the Addenda block is well-formed XML inside the stamped CFDI.
+
+<Warning>
+  The addenda template must be well-formed XML. Saving a Customer with malformed XML in the Addenda field will raise an `lxml` parse error and block the save.
+</Warning>
+
+The Addenda on the Sales Invoice form (`mx_addenda`) overrides the customer-level addenda for that specific invoice. If the Sales Invoice's own `mx_addenda` field is populated, it takes precedence over the template stored on the Customer record.
+
+## Setting the customer's billing address
+
+Before a Sales Invoice can be stamped, the app validates that the customer has a billing address set on the invoice and that the address has a valid **Zip Code** (`pincode`). The zip code is mapped to the `DomicilioFiscalReceptor` attribute in the CFDI 4.0 `Receptor` element, which is mandatory.
+
+<Steps>
+  <Step title="Open the Customer record">
+    Navigate to **Selling → Customer** and open the customer you want to configure.
+  </Step>
+  <Step title="Set the primary billing address">
+    In the **Address & Contacts** section, ensure a primary billing address is linked. Open the address and confirm the **Zip Code** (Pincode) field is filled with a valid Mexican postal code.
+  </Step>
+  <Step title="Set SAT Tax Regime">
+    In the **Tax** section, select the customer's **SAT Tax Regime** from the catalog.
+  </Step>
+  <Step title="Set CFDI Use">
+    Select the default **CFDI Use** for this customer's invoices. Only codes compatible with the selected tax regime will appear.
+  </Step>
+  <Step title="Save the record">
+    Frappe will validate the RFC and, if present, the Addenda XML before saving.
+  </Step>
+</Steps>
+
+## Company compliance fields
+
+The app also adds one Custom Field to the **Company** DocType. This field is read by the CFDI stamping engine to populate the `Emisor` element of every CFDI issued by that company.
+
+| Field | Description |
+|---|---|
+| SAT Tax Regime | The company's fiscal tax regime, used in the `cfdi40.Emisor` object when building the CFDI Comprobante. It is stored under the field name `mx_tax_regime` on the Company DocType. |
+
+<Note>
+  The company's **Tax ID** (RFC) and **Address Zip Code** are also required for stamping, but those fields are part of the standard ERPNext Company and Address DocTypes and are not added by this app.
+</Note>
