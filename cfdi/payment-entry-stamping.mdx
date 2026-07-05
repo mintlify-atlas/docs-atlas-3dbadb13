@@ -34,6 +34,8 @@ All of the following conditions must be satisfied before a Payment Entry can be 
 When `stamp_on_submit` is enabled in CFDI Stamping Settings, the Payment Entry override evaluates four conditions at submission time. Auto-stamping only proceeds when **all four** are true simultaneously:
 
 ```python
+super().on_submit()
+settings: CFDIStampingSettings = frappe.get_single("CFDI Stamping Settings")
 payment_options = [
     doc.mx_payment_option if hasattr(doc, "mx_payment_option") else None
     for doc in self.get_reference_docs()
@@ -46,6 +48,7 @@ conditions = [
 ]
 if all(conditions):
     csd = frappe.get_value("Default CSD", {"company": self.company}, "csd")
+    # If stamping fails, do not block the submission of the payment entry
     try:
         self.stamp_cfdi(csd)
     except Exception as e:
@@ -81,25 +84,31 @@ If any condition is not met (for example, the payment type is **Pay** rather tha
 
 ## CFDI Pago structure
 
-The `get_cfdi_voucher` method on the `PaymentEntry` override builds a `cfdi40.Comprobante` of type **Pago**. The specific construction path depends on whether the payment fully settles all referenced invoices:
+The `get_cfdi_voucher` method on the `PaymentEntry` override builds a `cfdi40.Comprobante` of type **Pago**. Only the full-settlement path is supported — partial payments are not.
 
 **Full-settlement path** (all references: `total_amount == allocated_amount`):
 
 The app calls `cfdi40.Comprobante.pago_comprobantes`, passing the original CFDI objects loaded directly from each referenced invoice's `mx_stamped_xml`. The SAT library computes the payment amounts and balances automatically from the original CFDI data.
 
-**Partial-payment path** (not yet fully supported):
-
-The app attempts to build individual `pago20.DoctoRelacionado` records. Each record carries:
-
-- `id_documento` — the UUID from the referenced invoice's `mx_uuid`.
-- `moneda_dr` — the invoice currency.
-- `num_parcialidad` — the installment number (position of this payment entry in the invoice's payment history).
-- `imp_saldo_ant` — the previous balance (`allocated_amount + outstanding_amount`).
-- `imp_pagado` — the amount allocated in this payment.
-- `serie` / `folio` — the CFDI series and folio of the referenced invoice.
+```python
+if all(r.total_amount == r.allocated_amount for r in self.references):
+    invoices = [frappe.get_doc(r.reference_doctype, r.reference_name).mx_cfdi_obj
+                for r in self.references]
+    return cfdi40.Comprobante.pago_comprobantes(
+        comprobantes=invoices,
+        fecha_pago=get_datetime(reference_date),
+        forma_pago=self.mx_payment_mode,
+        emisor=issuer,
+        lugar_expedicion=address.pincode,
+        receptor=self.cfdi_receiver,
+        serie=self.cfdi_series,
+        folio=self.cfdi_folio,
+        fecha=get_datetime(posting_date),
+    )
+```
 
 <Warning>
-  Partial payments (where `allocated_amount` differs from `total_amount` for any reference) are not fully supported. The app will throw an error if this condition is detected: *"All references must have the same total amount, partial payments are not supported."*
+  Partial payments (where `allocated_amount` differs from `total_amount` for any reference) are not supported. If this condition is detected the app throws: *"All references must have the same total amount, partial payments are not supported."*
 </Warning>
 
 ---

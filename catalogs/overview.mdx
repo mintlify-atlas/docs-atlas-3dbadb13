@@ -1,7 +1,7 @@
 ---
 title: "SAT Catalogs: Official Mexican Tax Authority Reference Data"
 sidebarTitle: "Overview"
-description: "ERPNext Mexico Compliance provides DocTypes for all required SAT CFDI 4.0 catalogs: Tax Regimes, CFDI Uses, Payment Methods, Product Keys, UOM Keys, and more."
+description: "ERPNext Mexico Compliance maps SAT CFDI 4.0 catalogs — Tax Regimes, CFDI Uses, Payment Methods, Product Keys, UOM Keys, and more — to Frappe DocTypes."
 ---
 
 The SAT (Servicio de Administración Tributaria) publishes official catalogs — *catálogos* — that must be referenced in every CFDI document. ERPNext Mexico Compliance maps each of these catalogs to a Frappe DocType so they integrate naturally with ERPNext's link fields, dropdown filters, and validation rules. Rather than hardcoding SAT codes in your configuration, you work with named records that carry both the official code and its Spanish description.
@@ -21,7 +21,7 @@ The SAT (Servicio de Administración Tributaria) publishes official catalogs —
 
 ## DocType structure
 
-Every catalog DocType shares a common set of core fields:
+Most catalog DocTypes share a common set of core fields:
 
 - **`key`** — the official SAT code (e.g., `601` for a tax regime, `G01` for a CFDI use, `01` for a payment method). This field is used as the document name and is enforced as unique.
 - **`description`** — the human-readable name in Spanish, exactly as published by the SAT (e.g., `General de Ley Personas Morales`).
@@ -31,8 +31,9 @@ Every catalog DocType shares a common set of core fields:
 Some DocTypes carry additional fields specific to their catalog:
 
 - **SAT UOM Key** adds a `uom_name` field (the short unit name, e.g., `KGM`) alongside the longer `description`.
-- **SAT Relationship Type** adds a `valid_from` date field tracking when the SAT activated that relationship type code.
 - **SAT CFDI Use** adds a `tax_regimes` child table (DocType: *SAT CFDI Use Tax Regime*) listing which SAT Tax Regime codes are permitted to use that CFDI use code — this drives the CFDI Use filtering described below.
+
+**SAT Relationship Type** differs from the other catalog DocTypes in one important way: its primary identifier field is named **`code`** (not `key`), and it does not include the `key_name` computed field. It shares the `description` and `enabled` fields with the rest of the catalogs, and adds a `valid_from` date field tracking when the SAT activated that relationship type code.
 
 ## SAT CFDI Use and Tax Regime filtering
 

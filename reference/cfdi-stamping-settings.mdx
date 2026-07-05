@@ -1,7 +1,7 @@
 ---
 title: "CFDI Stamping Settings DocType Reference"
 sidebarTitle: "Stamping Settings"
-description: "Complete field reference for the CFDI Stamping Settings singleton DocType — API credentials, stamp behavior, email, PDF templates, and premium features."
+description: "Field reference for CFDI Stamping Settings — API credentials, test mode, stamp on submit, low-credit warnings, email notifications, and PDF templates."
 ---
 
 `CFDI Stamping Settings` is a singleton DocType (one record per ERPNext site). It controls all aspects of CFDI stamping, including API credentials for the TI Sin Problemas web service, auto-stamp behavior on document submission, credit balance warnings, and optional email notifications with CFDI attachments.
@@ -29,7 +29,7 @@ These fields configure the connection to the TI Sin Problemas CFDI stamping web 
 </ParamField>
 
 <ParamField path="is_premium" type="Check (virtual)" default="0">
-  Read-only virtual field set automatically by the subscription check. When both `api_key` and `api_secret` are configured and the account has an active subscription, this field returns `True` and unlocks the **Premium Features** section. The subscription status is cached in Redis for 12 hours.
+  Read-only virtual field — its value is computed at runtime by the `is_premium` Python property and is never stored in the database. When both `api_key` and `api_secret` are configured and the account has an active subscription, this property returns `True` and unlocks the **Premium Features** section. The subscription check result is cached in Redis for 12 hours via the module-level `get_is_premium()` function.
 </ParamField>
 
 <ParamField path="enable_low_credits_warning" type="Check" default="1">
@@ -49,28 +49,28 @@ These fields configure the connection to the TI Sin Problemas CFDI stamping web 
 <ParamField path="default_csds" type="Table → Default CSD">
   Maps each company to its active Digital Signing Certificate used for automatic stamping. Each row contains a `company` (Link → Company) and a `csd` (Link → Digital Signing Certificate). This table is only visible and required when `stamp_on_submit` is enabled.
 
-  | Column | Type | Description |
-  |--------|------|-------------|
-  | `company` | Link → Company | The ERPNext Company for which this CSD applies |
-  | `csd` | Link → Digital Signing Certificate | The active CSD record to use when stamping documents for this company |
+  | Column | Type | Required | Description |
+  |--------|------|----------|-------------|
+  | `company` | Link → Company | ✓ | The ERPNext Company for which this CSD applies |
+  | `csd` | Link → Digital Signing Certificate | ✓ | The active CSD record to use when stamping documents for this company |
 </ParamField>
 
 ### Premium Features
 
 <Note>
-  Fields in this section are only active when `is_premium` evaluates to `True`. They are visible in the form but have no effect on non-premium accounts.
+  Fields in this section depend on `is_premium` evaluating to `True`. They are visible in the form but have no effect on non-premium accounts.
 </Note>
 
 <ParamField path="pdf_templates" type="Table → CFDI PDF Template">
-  Custom Jinja/HTML PDF templates to use instead of the default layout when generating the CFDI PDF attachment. Each row specifies a `company` and `document_type` (e.g., Sales Invoice, Payment Entry). Duplicate combinations of company + document type are rejected on save.
+  Custom Jinja/HTML PDF templates to use instead of the default layout when generating the CFDI PDF attachment. Each row specifies a `company` and `document_type` (e.g., Sales Invoice, Payment Entry). Duplicate combinations of company + document type are rejected on save. Only visible when `is_premium` is `True`.
 </ParamField>
 
 <ParamField path="send_email_on_stamp" type="Check" default="0">
-  When enabled, an email carrying the stamped CFDI XML and PDF as attachments is sent automatically after each successful stamp operation. Requires `is_premium` to be `True`.
+  When enabled, an email carrying the stamped CFDI XML and PDF as attachments is sent automatically after each successful stamp operation. Only visible when `is_premium` is `True`.
 </ParamField>
 
 <ParamField path="send_email_to" type="Select">
-  Determines which contact receives the post-stamp email. Only visible when `send_email_on_stamp` is checked. Valid options:
+  Determines which contact receives the post-stamp email. Only visible when both `send_email_on_stamp` and `is_premium` are set. Valid options:
 
   | Value | Behavior |
   |-------|----------|
@@ -81,7 +81,7 @@ These fields configure the connection to the TI Sin Problemas CFDI stamping web 
 </ParamField>
 
 <ParamField path="email_templates" type="Table → CFDI Email Template">
-  Frappe Email Template to use per document type. Each row links a `document_type` to an `email_template` (Link → Email Template). When `send_email_on_stamp` is enabled, this table must contain at least one entry for every document type that will be stamped. The template is rendered with the full document as context (subject and HTML body).
+  Frappe Email Template to use per document type. Each row links a `document_type` to an `email_template` (Link → Email Template). When `send_email_on_stamp` is enabled and `is_premium` is `True`, this table is mandatory. The template is rendered with the full document as context (subject and HTML body).
 </ParamField>
 
 ---
@@ -96,17 +96,7 @@ These fields configure the connection to the TI Sin Problemas CFDI stamping web 
 
 ## Whitelisted methods
 
-The following methods are exposed via `frappe.call` and can be invoked from the browser or through the Frappe REST API.
-
-### `check_low_credits()`
-
-Fetches the current credit balance from the web service and displays an orange alert if the balance is below `low_credits_threshold`. No return value; the alert is shown in-app via `frappe.msgprint`.
-
-```python
-# Called internally after stamping operations
-settings = frappe.get_single("CFDI Stamping Settings")
-settings.check_low_credits()
-```
+The following method is exposed via `frappe.call` and can be invoked from the browser or through the Frappe REST API.
 
 ### `get_available_credits()`
 
@@ -118,6 +108,21 @@ credits: int = settings.get_available_credits()
 ```
 
 **Returns:** `int` — the number of available credits reported by the web service.
+
+---
+
+## Internal methods
+
+The following methods exist on the `CFDIStampingSettings` document but are **not** exposed as whitelisted endpoints. They are used internally by the stamping and email pipeline.
+
+### `check_low_credits()`
+
+Fetches the current credit balance via `get_available_credits()` and displays an orange alert if the balance is below `low_credits_threshold`. No return value; the alert is shown in-app via `frappe.msgprint`.
+
+```python
+settings = frappe.get_single("CFDI Stamping Settings")
+settings.check_low_credits()
+```
 
 ### `can_send_emails(doctype)`
 

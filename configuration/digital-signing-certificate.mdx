@@ -44,9 +44,9 @@ You need all three to configure a signing certificate in ERPNext. Keep these fil
     protect your private key.
   </Step>
   <Step title="Save">
-    Click **Save**. The app will load and validate the certificate triad
-    (certificate, key, and password) using the `satcfdi` library. If the
-    combination is invalid, an error is raised and the document is not saved.
+    Click **Save**. The app will validate the certificate triad (certificate,
+    key, and password) using the `satcfdi` library. If the combination is
+    invalid, an error is raised and the document is not saved.
   </Step>
 </Steps>
 
@@ -72,7 +72,7 @@ Access to Digital Signing Certificate records is controlled by role:
 |---|---|
 | System Manager | Full access: create, read, write, delete, share |
 | Accounts Manager | Full access: create, read, write, delete, share |
-| Accounts User | Read-only access |
+| Accounts User | Read and share |
 
 <Warning>
   The private key file (`.key`) and its password are highly sensitive

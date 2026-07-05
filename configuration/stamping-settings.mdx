@@ -30,10 +30,10 @@ Enter the credentials provided by TI Sin Problemas when you purchased a stamps p
 When Test Mode is enabled, the app connects to `https://cfdi.tisp-staging.com`. When disabled, it connects to `https://tisinproblemas.com`.
 
 <Note>
-  The API Key and API Secret can also be set via site configuration keys
-  `cfdi_api_key` and `cfdi_api_secret`. When a value is present in the site
-  config, it takes precedence over what is entered in the form and can only be
-  changed by the site administrator.
+  The API Key, API Secret, and Test Mode can also be set via site configuration
+  keys `cfdi_api_key`, `cfdi_api_secret`, and `cfdi_test_mode`. When a value is
+  present in the site config, it takes precedence over what is entered in the
+  form and can only be changed by the site administrator.
 </Note>
 
 ---
@@ -70,9 +70,7 @@ To query the current credit balance at any time, open the **CFDI Stamping Settin
 
 ## Premium features
 
-The **Is Premium** field is a virtual (computed) field. It is automatically set to `true` when the API credentials are valid and the associated subscription has an active premium plan — you cannot set it manually. Premium status is cached for 12 hours.
-
-When **Is Premium** is active, the **Premium Features** section of the form becomes visible and unlocks:
+The **Is Premium** field is a virtual (computed) Check field. It reflects whether the web service subscription associated with your API credentials is active and premium — the result of this check is cached for 12 hours. When the field evaluates to true, the **Premium Features** section of the form becomes visible and unlocks:
 
 - **Custom PDF templates** — per-company, per-document-type Jinja HTML templates for branded CFDI PDFs.
 - **Automatic email sending** — automatically email stamped CFDI files to the customer's contacts after stamping.

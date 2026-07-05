@@ -10,8 +10,7 @@ By default, the app renders CFDI PDFs using the built-in `satcfdi` library rende
   Custom PDF templates and automatic email sending are **premium features**.
   The **Is Premium** flag in [CFDI Stamping Settings](/configuration/stamping-settings)
   must be active before the PDF Templates and Email Templates sections become
-  visible on the form. Premium status is determined automatically by your
-  subscription and cannot be set manually.
+  visible on the form.
 </Note>
 
 ---
@@ -29,7 +28,7 @@ Each row in the **PDF Templates** table is a `CFDI PDF Template` child DocType w
 | Field | Type | Required | Description |
 |---|---|---|---|
 | Company | Link | Yes | The company this template applies to |
-| Document Type | Select | Yes | `Sales Invoice` or `Payment Entry` |
+| Document Type | Select | Yes | `Payment Entry` or `Sales Invoice` |
 | Title | Data | No | Label for the template (defaults to `CFDI`) |
 | Letter Head | Link | No | An ERPNext Letter Head whose header and footer wrap the body |
 | CSS Styles | Code (CSS) | No | Stylesheet applied to the rendered HTML |
@@ -102,8 +101,8 @@ The example ingreso template renders a complete CFDI representation, including i
             <!-- qr is a base64 PNG of the SAT verification QR code -->
             <td><img src="data:image/png;base64,{{ qr }}" alt="QR Code" /></td>
             <td>
-                <div><strong>Sello del CFDI:</strong> {{ tfd.SelloCFD }}</div>
-                <div><strong>Sello del SAT:</strong> {{ tfd.SelloSAT }}</div>
+                <div><strong>Sello del CFDI:</strong> {{ "&#8203;".join(tfd.SelloCFD) }}</div>
+                <div><strong>Sello del SAT:</strong> {{ "&#8203;".join(tfd.SelloSAT) }}</div>
             </td>
         </tr>
     </tbody>
@@ -132,7 +131,7 @@ Each row in the **Email Templates** table is a `CFDI Email Template` child DocTy
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| Document Type | Select | Yes | `Sales Invoice` or `Payment Entry` |
+| Document Type | Select | Yes | `Payment Entry` or `Sales Invoice` |
 | Email Template | Link | Yes | Links to a standard ERPNext **Email Template** record |
 
 The linked ERPNext Email Template defines the email **subject** and **message body** as Jinja templates. The context passed to these templates is the document serialized as a Python dictionary, giving you access to all document fields (e.g., `{{ doc.customer }}`, `{{ doc.grand_total }}`).

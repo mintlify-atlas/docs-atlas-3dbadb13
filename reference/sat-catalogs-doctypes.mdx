@@ -1,7 +1,7 @@
 ---
 title: "SAT Catalog DocType Reference for CFDI 4.0"
 sidebarTitle: "SAT Catalog DocTypes"
-description: "Field reference for all SAT catalog DocTypes: SAT Tax Regime, CFDI Use, Payment Method, Payment Option, Product Key, UOM Key, Relationship Type, and Cancellation Reason."
+description: "Field reference for the eight SAT catalog DocTypes used in CFDI 4.0: Tax Regime, CFDI Use, Payment Method, Payment Option, Product Key, UOM Key, and more."
 ---
 
 Each SAT catalog is represented as a Frappe DocType. These DocTypes are populated automatically from official SAT data and linked to other ERPNext DocTypes via standard Link fields. Records are managed centrally and read-only to Accounts Users; only System Managers and Accounts Managers can add or modify entries.
@@ -134,7 +134,7 @@ The **SAT Payment Option** catalog (*Catálogo de Métodos de Pago*) distinguish
 </ParamField>
 
 <ParamField path="key" type="Data" required>
-  SAT payment option code, unique across the catalog. The two standard values are `PUE` (*Pago en una sola exhibición*) and `PPD` (*Pago en parcialidades o diferido*).
+  SAT payment option code, maximum 3 characters, unique across the catalog. The two standard values are `PUE` (*Pago en una sola exhibición*) and `PPD` (*Pago en parcialidades o diferido*).
 </ParamField>
 
 <ParamField path="key_name" type="Data (read-only)">
@@ -165,6 +165,10 @@ The **SAT Product or Service Key** catalog (*Catálogo de Productos y Servicios*
 </Warning>
 
 **Fields:**
+
+<ParamField path="enabled" type="Check" default="1">
+  Controls whether this product or service code appears in Item and Sales Invoice Item dropdown lists. Disable obsolete codes instead of deleting them.
+</ParamField>
 
 <ParamField path="key" type="Data" required>
   Eight-character numeric SAT product or service code, unique across the catalog. Maximum length 8 characters (enforced at the database level).

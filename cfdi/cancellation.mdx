@@ -36,16 +36,16 @@ The `requires_relationship` flag on each Cancellation Reason record controls whe
     Navigate to the stamped Sales Invoice. The **Cancel** button is present on all submitted invoices; however, for stamped invoices the cancellation flow goes through the SAT rather than directly cancelling in ERPNext.
   </Step>
   <Step title="Set the Cancellation Reason">
-    In the **Cancellation Reason** field, select the appropriate SAT reason code. If you leave this field blank, the app throws a validation error: *"A Cancellation Reason is required."*
+    In the **Cancellation Reason** field, select the appropriate SAT reason code. If you leave this field blank, the app throws a validation error: *"A Cancellation Reason is required to cancel this sales invoice."*
   </Step>
   <Step title="Set the Substitute Invoice (if required)">
     If you selected reason `01` (issued with errors, with relationship), the **Substitute Invoice** (`substitute_invoice`) field becomes required. Set it to the name of the corrected Sales Invoice that replaces the one being cancelled. The app reads the substitute's `mx_uuid` and includes it in the cancellation request sent to the SAT.
   </Step>
-  <Step title="Click Cancel">
-    Click the **Cancel** button. Because the invoice is stamped, the `cancel` method routes to `cancel_cfdi` instead of the standard ERPNext cancel.
+  <Step title="Click Cancel and select a certificate">
+    Click the **Cancel** button. Because the invoice is stamped, you are prompted to select a **Digital Signing Certificate** for the Company. After selecting the certificate, the `cancel` method routes to `cancel_cfdi(certificate, "substitute_invoice")`.
   </Step>
   <Step title="Cancellation request is submitted">
-    The app posts the cancellation request to `tisp_apps.api.v1.cfdi.cancel`, passing the CSD credentials, UUID, issuer and receiver RFCs, total amount, cancellation reason code, and substitute UUID (if applicable). The web service returns a cancellation acknowledgement XML.
+    The app posts the cancellation request to `tisp_apps.api.v1.cfdi.cancel`, passing the CSD key and certificate, UUID, issuer and receiver RFCs, total amount, cancellation reason code, and substitute UUID (if applicable). The web service returns a cancellation acknowledgement XML.
   </Step>
   <Step title="Document enters Pending Cancellation">
     The acknowledgement XML is stored in `cancellation_acknowledgement`, and `mx_cfdi_status` is set to **Pending Cancellation**. The document is saved but **not yet cancelled** in ERPNext. A message confirms: *"This Document will be cancelled once the CFDI cancellation request is approved."*
@@ -68,8 +68,8 @@ The cancellation flow for Payment Entries is identical to Sales Invoices, with o
   <Step title="Set the Substitute Payment Entry (if required)">
     If the reason is `01`, set the **Substitute Payment Entry** field to the replacement Payment Entry. The app reads its `mx_uuid` and sends it as the substitute UUID in the cancellation request.
   </Step>
-  <Step title="Click Cancel">
-    Click **Cancel**. The `cancel` method detects that the entry is stamped and routes to `cancel_cfdi("substitute_payment_entry")`.
+  <Step title="Click Cancel and select a certificate">
+    Click **Cancel** and select the **Digital Signing Certificate** when prompted. The `cancel` method detects that the entry is stamped and routes to `cancel_cfdi(certificate, "substitute_payment_entry")`.
   </Step>
   <Step title="Cancellation request is submitted and status updated">
     The ACK XML is stored in `cancellation_acknowledgement` and `mx_cfdi_status` is set to **Pending Cancellation**.
@@ -80,13 +80,13 @@ The cancellation flow for Payment Entries is identical to Sales Invoices, with o
 
 ## Cancellation status tracking
 
-The SAT does not always approve cancellations immediately. Some cancellations (particularly those requiring recipient acceptance) can remain pending for up to 72 hours. ERPNext Mexico Compliance reconciles the status automatically through a scheduled job.
+The SAT does not always approve cancellations immediately. Some cancellations (particularly those requiring recipient acceptance) can remain pending for up to 72 hours. ERPNext Mexico Compliance reconciles the status automatically through a scheduled task.
 
 **Scheduled reconciliation:**
-The `check_cancellation_status` job runs **hourly** and queries all Sales Invoices and Payment Entries whose `mx_cfdi_status` is **Pending Cancellation**. For each document, it calls the web service's `tisp_apps.api.v1.cfdi.status` endpoint. If the SAT reports the document as `Cancelado` (Cancelled), the app calls `update_cancellation_status`, which sets `mx_cfdi_status` to **Cancelled** and triggers the native ERPNext `cancel` operation on the document.
+The `check_cancellation_status` task runs **hourly** (configured in `hooks.py`) and queries all Sales Invoices and Payment Entries whose `mx_cfdi_status` is **Pending Cancellation**. For each document, it calls `update_cancellation_status`, which queries the web service's `tisp_apps.api.v1.cfdi.status` endpoint. If the SAT reports the document as `Cancelado` (Cancelled), `update_cancellation_status` sets `mx_cfdi_status` to **Cancelled** and triggers the native ERPNext `_cancel` operation on the document.
 
 **Manual status check:**
-You can also trigger a status check on demand by clicking the **Check Cancellation Status** button on any stamped document. This calls the same web service endpoint and displays the response in a dialog showing:
+You can also trigger a status check on demand by clicking the **Check Cancellation Status** button on any document that has a pending cancellation acknowledgement. This calls the `check_cancellation_status` whitelisted controller method, which queries the same web service endpoint and displays the response in a dialog showing:
 - CFDI Code
 - CFDI Status (e.g., Vigente / Cancelado)
 - Is Cancellable (e.g., Cancelable con aceptación / No cancelable)
@@ -95,7 +95,7 @@ You can also trigger a status check on demand by clicking the **Check Cancellati
 If the SAT has already approved the cancellation, the button also triggers the automatic ERPNext cancellation immediately.
 
 <Tip>
-  Use **Check Cancellation Status** when you need to act on a cancellation without waiting for the next hourly job run.
+  Use **Check Cancellation Status** when you need to act on a cancellation without waiting for the next hourly task run.
 </Tip>
 
 ---

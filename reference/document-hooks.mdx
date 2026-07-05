@@ -62,11 +62,11 @@ In addition to the two custom CFDI event hooks, `erpnext_mexico_compliance/hooks
 | Hook key | Value | Effect |
 |---|---|---|
 | `after_migrate` | `erpnext_mexico_compliance.migrate.execute_after_migrate_tasks` | Runs SAT catalog updates and data migrations automatically after every `bench migrate` |
-| `override_doctype_class` | Customer, Employee, Payment Entry, Sales Invoice, Sales Invoice Item | Replaces the standard ERPNext controller classes with compliance-aware subclasses |
+| `override_doctype_class` | `Customer`, `Employee`, `Payment Entry`, `Sales Invoice`, `Sales Invoice Item` | Replaces the standard ERPNext controller classes with compliance-aware subclasses (`erpnext_mexico_compliance.overrides.*`) |
 | `scheduler_events.hourly` | `erpnext_mexico_compliance.tasks.check_cancellation_status` | Polls the SAT to reconcile CFDI cancellation status every hour |
 | `doctype_js` | `Sales Invoice`, `Payment Entry` | Injects custom JavaScript (Stamp CFDI / Cancel CFDI buttons) into both form views |
-| `app_include_js` | `utils.js` | Loads shared client-side utilities into every Desk page |
-| `web_include_js` | `portal_invoice.js` | Loads CFDI portal rendering logic into every web page |
+| `app_include_js` | `/assets/erpnext_mexico_compliance/js/utils.js` | Loads shared client-side utilities into every Desk page |
+| `web_include_js` | `/assets/erpnext_mexico_compliance/js/portal_invoice.js` | Loads CFDI portal rendering logic into every web page |
 
 <Note>
 `override_doctype_class` means the `Customer` and `Employee` doctypes also gain compliance validation logic (RFC and CURP format checks, respectively) without any additional configuration on your part.

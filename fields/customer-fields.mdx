@@ -18,7 +18,7 @@ The following Custom Fields are added to the Customer DocType:
 
 ## RFC validation
 
-The `Customer` override calls `is_valid_rfc()` from `erpnext_mexico_compliance.controllers.validators` every time a Customer record is saved, provided the customer's primary address is in Mexico and a Tax ID has been entered.
+The `Customer` override calls `validate_mexican_tax_id()` every time a Customer record is saved, provided the customer's primary address is in Mexico and a Tax ID has been entered. That method reads the `tax_id_is_rfc` property, which in turn calls `is_valid_rfc()` from `erpnext_mexico_compliance.controllers.validators`.
 
 The RFC must match the following regular expression, which covers both moral persons (12-character RFCs: 3 letters + 6-digit date + 3 alphanumeric) and natural persons (13-character RFCs: 4 letters + 6-digit date + 3 alphanumeric):
 

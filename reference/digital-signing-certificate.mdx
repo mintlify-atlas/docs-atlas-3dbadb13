@@ -1,7 +1,7 @@
 ---
 title: "Digital Signing Certificate DocType Reference"
 sidebarTitle: "Signing Certificate"
-description: "Field reference for the Digital Signing Certificate DocType — stores CSD .cer and .key files per company for CFDI signing."
+description: "Field reference for the Digital Signing Certificate DocType — stores CSD .cer and .key files per company for signing CFDI documents."
 ---
 
 `Digital Signing Certificate` stores the SAT-issued Certificado de Sello Digital (CSD) for each company. Each record holds the `.cer` certificate file, the `.key` private key file, and the password needed to cryptographically sign CFDI documents. The `satcfdi` library's `Signer` class is loaded from these three inputs at signing time.

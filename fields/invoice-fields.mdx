@@ -91,13 +91,13 @@ Before the stamping engine sends a CFDI to the PAC, the `SalesInvoice.validate_i
   <Step title="UOM must have a SAT UOM Key">
     The UOM linked to each item row must have a non-empty `mx_uom_key`. If missing, the error **"UOM {uom} at row {n} does not have a SAT UOM Key"** is thrown and stamping is blocked.
   </Step>
-  <Step title="Zero-amount items are excluded">
-    Items where `amount == 0` are silently excluded from the `cfdi40.Concepto` list sent to the PAC. They are not validated for product/service key or UOM key because they will not appear in the stamped XML.
+  <Step title="Zero-amount items are excluded from CFDI generation">
+    Items where `amount == 0` are silently excluded from the `cfdi40.Concepto` list built by the `cfdi_items` property and are therefore absent from the stamped XML. However, `validate_items()` calls `validate()` on every row regardless of amount, so zero-amount items must still have a valid `mx_product_service_key` and UOM `mx_uom_key` or the stamp request will be blocked.
   </Step>
 </Steps>
 
 <Warning>
-  Items with a non-zero amount will fail stamping if either `mx_product_service_key` or the UOM's `mx_uom_key` is blank. Ensure both the **Item** master and the **UOM** master are fully configured before submitting a Sales Invoice for stamping.
+  All item rows — including zero-amount rows — will fail stamping if either `mx_product_service_key` or the UOM's `mx_uom_key` is blank, because `validate_items()` runs on every row. Ensure both the **Item** master and the **UOM** master are fully configured before submitting a Sales Invoice for stamping.
 </Warning>
 
 <Tip>

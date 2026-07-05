@@ -23,12 +23,14 @@ def check_cancellation_status():
 
     invoices = frappe.get_all("Sales Invoice", fields=["name"], filters=FILTERS)
     for i in invoices:
-        si = frappe.get_doc("Sales Invoice", i.name)
+        frappe.debug_log.append(f"Checking cancellation status for Sales Invoice: {i.name}")
+        si: SalesInvoice = frappe.get_doc("Sales Invoice", i.name)
         si.update_cancellation_status()
 
     payments = frappe.get_all("Payment Entry", fields=["name"], filters=FILTERS)
     for p in payments:
-        pe = frappe.get_doc("Payment Entry", p.name)
+        frappe.debug_log.append(f"Checking cancellation status for Payment Entry: {p.name}")
+        pe: PaymentEntry = frappe.get_doc("Payment Entry", p.name)
         pe.update_cancellation_status()
 ```
 
@@ -45,10 +47,10 @@ The job processes every site individually. If your Frappe installation serves mu
     Instantiates the configured web service client and calls `ws.get_status(cfdi)`, passing the parsed CFDI object. The web service returns a `CfdiStatus` dataclass instance.
   </Step>
   <Step title="Handle NOT_CANCELLABLE">
-    If `status.is_cancellable == CancellableStatus.NOT_CANCELLABLE`, the document is no longer eligible for cancellation. The method sets `mx_is_cancellable = 0` and `mx_cfdi_status = "Valid"`, then saves the document. No cancellation takes place.
+    If `status.is_cancellable == status.CancellableStatus.NOT_CANCELLABLE`, the document is no longer eligible for cancellation. The method sets `mx_is_cancellable = 0` and `mx_cfdi_status = "Valid"`, then saves the document. No cancellation takes place.
   </Step>
   <Step title="Handle CANCELLED">
-    If `status.status == DocumentStatus.CANCELLED`, the SAT has confirmed the cancellation. The method sets `mx_cfdi_status = "Cancelled"` and calls the document's internal `_cancel()` method, which cancels the ERPNext document and all linked entries.
+    If `status.status == status.DocumentStatus.CANCELLED`, the SAT has confirmed the cancellation. The method sets `mx_cfdi_status = "Cancelled"` and calls the document's internal `_cancel()` method, which cancels the ERPNext document and all linked entries.
   </Step>
 </Steps>
 
@@ -56,7 +58,6 @@ The job processes every site individually. If your Frappe installation serves mu
 def update_cancellation_status(self):
     ws = get_ws_client()
     status = ws.get_status(self.mx_cfdi_obj)
-
     if status.is_cancellable == status.CancellableStatus.NOT_CANCELLABLE:
         self.mx_is_cancellable = 0
         self.mx_cfdi_status = CFDIStatus.VALID.value
@@ -81,6 +82,7 @@ In addition to the automated hourly job, any user with document write access can
 The `ws_client.models` module defines the `CfdiStatus` dataclass and its nested enums. These are the canonical status values used throughout the app when interacting with the SAT web service.
 
 ```python ws_client/models.py
+@dataclass
 class CfdiStatus:
     class CancellableStatus(Enum):
         CANCELLABLE_BY_APPROVAL   = "Cancelable con aceptación"

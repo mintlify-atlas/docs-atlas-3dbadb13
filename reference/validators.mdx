@@ -30,11 +30,11 @@ An RFC encodes the taxpayer's name initials and date of birth (or incorporation 
 ```python
 from erpnext_mexico_compliance.controllers.validators import is_valid_rfc
 
-is_valid_rfc("ABC123456789")     # True  — company RFC (12 chars)
-is_valid_rfc("ABCD123456789")    # True  — person RFC (13 chars)
 is_valid_rfc("XAXX010101000")    # True  — generic public RFC (Público en General)
+is_valid_rfc("XEXX010101000")    # True  — generic foreign RFC
+is_valid_rfc("ABC010101AB1")     # True  — company RFC (12 chars)
 is_valid_rfc("INVALID")          # False — too short, no date segment
-is_valid_rfc("abc123456789")     # False — lowercase not accepted
+is_valid_rfc("abc010101ab1")     # False — lowercase not accepted
 ```
 
 ### Regex pattern
@@ -85,14 +85,14 @@ The validator uses a verbose multi-line pattern compiled with `re.VERBOSE`:
 
 ```python
 r"""^([A-Z][AEIOUX][A-Z]{2}
-\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])
-[HM]
-(?:AS|B[CS]|C[CLMSH]|D[FG]|G[TR]|HG|JC|M[CNS]|N[ETL]|OC|PL|Q[TR]|S[PLR]|T[CSL]|VZ|YN|ZS)
-[B-DF-HJ-NP-TV-Z]{3}
-[A-Z\d])(\d)$"""
+	\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])
+	[HM]
+	(?:AS|B[CS]|C[CLMSH]|D[FG]|G[TR]|HG|JC|M[CNS]|N[ETL]|OC|PL|Q[TR]|S[PLR]|T[CSL]|VZ|YN|ZS)
+	[B-DF-HJ-NP-TV-Z]{3}
+	[A-Z\d])(\d)$"""
 ```
 
-The pattern encodes the complete list of valid two-letter Mexican state codes and restricts the consonant block to true consonants (excluding vowels and special characters).
+The pattern encodes the complete list of valid two-letter Mexican state codes and restricts the consonant block to true consonants (excluding vowels and special characters). Because the pattern is compiled with `re.VERBOSE`, whitespace and line breaks inside the raw string are ignored during matching.
 
 ## is_match(pattern, string, flags=0) → bool
 

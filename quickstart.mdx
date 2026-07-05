@@ -1,7 +1,7 @@
 ---
-title: "Get Started with CFDI Stamping in ERPNext"
+title: "Get Started with CFDI 4.0 Stamping in ERPNext Mexico"
 sidebarTitle: "Quickstart"
-description: "Configure your Digital Signing Certificate and CFDI Stamping Settings, then stamp your first Sales Invoice in under 10 minutes."
+description: "Configure your Digital Signing Certificate and CFDI Stamping Settings, then stamp your first Sales Invoice CFDI in under 10 minutes."
 ---
 
 This guide takes you from a freshly installed ERPNext Mexico Compliance app to a fully stamped CFDI Sales Invoice. You will configure your Digital Signing Certificate (CSD), connect to the TI Sin Problemas stamping service, verify your master data, and issue your first CFDI — all without leaving ERPNext Desk.
@@ -33,15 +33,15 @@ This guide takes you from a freshly installed ERPNext Mexico Compliance app to a
     1. Navigate to **Mexico Compliance → CFDI Stamping Settings**.
     2. Enter your **API Key** in the corresponding field.
     3. Enter your **API Secret** in the corresponding field.
-    4. If you are configuring a production environment, **uncheck the Test Mode checkbox**. Leave Test Mode enabled while you are validating your setup in a non-production site.
-    5. Optionally, enable **Stamp on Submit** if you want Sales Invoices to be stamped automatically the moment they are submitted, without requiring a manual button click.
+    4. If you are configuring a production environment, **uncheck the Test mode checkbox**. Leave Test mode enabled while you are validating your setup in a non-production site.
+    5. Optionally, enable **Stamp on submit** if you want Sales Invoices to be stamped automatically the moment they are submitted, without requiring a manual button click.
     6. Click **Save**.
   </Step>
 
   <Step title="Check available credits">
     Before stamping invoices, confirm that your account has sufficient credits.
 
-    1. In **Mexico Compliance → CFDI Stamping Settings**, click the **Available Credits** button.
+    1. In **Mexico Compliance → CFDI Stamping Settings**, click the **Available credits** button.
     2. The current credit balance for your API account will be displayed.
 
     If your credit balance is zero or insufficient, contact [info@tisinproblemas.com](mailto:info@tisinproblemas.com) to top up your account.
@@ -77,7 +77,8 @@ This guide takes you from a freshly installed ERPNext Mexico Compliance app to a
     **If auto-stamp is not enabled:**
     1. Create, complete, and submit a Sales Invoice.
     2. On the submitted invoice form, click the **Stamp CFDI** button.
-    3. The app sends the invoice data to the TI Sin Problemas stamping service, which returns the SAT-sealed XML. The **Stamped XML** field is updated with the result.
+    3. A dialog will appear prompting you to select a **Digital Signing Certificate** for the company issuing the invoice. Choose the appropriate certificate and confirm.
+    4. The app sends the invoice data to the TI Sin Problemas stamping service, which returns the SAT-sealed XML. The **Stamped XML** field is updated with the result.
 
     A successfully stamped invoice will display the SAT UUID (fiscal folio) in the Stamped XML field. One credit is deducted from your account per stamp.
   </Step>
@@ -85,8 +86,9 @@ This guide takes you from a freshly installed ERPNext Mexico Compliance app to a
   <Step title="Download CFDI files">
     After a Sales Invoice has been stamped, you can retrieve the official CFDI files for your records or to send to your customer.
 
-    1. On the stamped Sales Invoice form, click **Download CFDI Files**.
-    2. ERPNext will package the signed XML file and the PDF representation of the CFDI into a single ZIP archive and prompt you to download it.
+    1. On the stamped Sales Invoice form, open the **CFDI Actions** button group.
+    2. Click **Download CFDI files**.
+    3. ERPNext will package the signed XML file and the PDF representation of the CFDI into a single ZIP archive and prompt you to download it.
 
     Share the XML file with your customer — Mexican regulations require the XML to be delivered alongside any printed or PDF representation of the invoice.
   </Step>
@@ -102,7 +104,7 @@ This guide takes you from a freshly installed ERPNext Mexico Compliance app to a
     Understand the SAT cancellation process, how to provide a cancellation reason and substitute document, and how the hourly status check job keeps your records up to date.
   </Card>
   <Card title="Stamping Settings Reference" icon="gear" href="configuration/stamping-settings">
-    Full reference for all fields in CFDI Stamping Settings, including Test Mode behavior, auto-stamp configuration, and API credential management.
+    Full reference for all fields in CFDI Stamping Settings, including Test mode behavior, auto-stamp configuration, and API credential management.
   </Card>
   <Card title="SAT Catalogs" icon="book" href="catalogs/overview">
     Browse all SAT catalog DocTypes included with the app — payment methods, tax regimes, product/service keys, units of measure, and cancellation reasons.

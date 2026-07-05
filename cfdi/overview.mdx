@@ -53,7 +53,7 @@ Once a document is stamped, its `mx_cfdi_status` field tracks its standing with 
 | **Cancelled** | The SAT has confirmed the cancellation. ERPNext automatically cancels the document when this status is detected. |
 
 <Note>
-  The transition from **Pending Cancellation** to **Cancelled** is handled by the `check_cancellation_status` scheduled job, which runs hourly and polls the web service for any approved cancellations.
+  The transition from **Pending Cancellation** to **Cancelled** is handled by the `check_cancellation_status` scheduled task, which runs hourly and calls `update_cancellation_status` on every document whose `mx_cfdi_status` is **Pending Cancellation**. If the SAT reports the document as cancelled, ERPNext cancels it automatically.
 </Note>
 
 ---
@@ -70,7 +70,7 @@ The three core API endpoints used are:
 | `tisp_apps.api.v1.cfdi.cancel` | Submit a cancellation request to the SAT; returns the ACK XML. |
 | `tisp_apps.api.v1.cfdi.status` | Query the current SAT status of a stamped CFDI by UUID. |
 
-The client also calls `tisp_apps.api.v1.cfdi.subscription_details` to check available stamp credits, which is exposed in ERPNext via the **Available Credits** button in CFDI Stamping Settings.
+The client also calls `tisp_apps.api.v1.cfdi.subscription_details` to check available stamp credits via the `get_available_credits` method on CFDI Stamping Settings.
 
 ---
 
@@ -80,5 +80,5 @@ Before any document can be stamped, all of the following must be in place:
 
 - **Digital Signing Certificate (CSD)** — at least one CSD must be uploaded for the Company issuing the document. Navigate to *Mexico Compliance → Digital Signing Certificate* to add one.
 - **API credentials** — an API Key and API Secret must be entered in *Mexico Compliance → CFDI Stamping Settings*. These are issued when you purchase a stamp package from TI Sin Problemas.
-- **Stamp credits** — each successful stamp consumes one credit from your package. Check your balance via the **Available Credits** button in CFDI Stamping Settings.
+- **Stamp credits** — each successful stamp consumes one credit from your package. Check your balance via the `get_available_credits` method exposed in CFDI Stamping Settings.
 - **Valid master data** — the Company address, Customer RFC, tax regimes, SAT catalog keys for items and UOMs, and payment method codes must all be correctly configured before attempting to stamp. Specific per-document-type requirements are detailed in the Sales Invoice and Payment Entry pages.

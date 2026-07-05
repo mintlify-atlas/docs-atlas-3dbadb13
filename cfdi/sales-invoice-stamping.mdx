@@ -62,9 +62,11 @@ All of the following conditions must be satisfied before a Sales Invoice can be 
 In **CFDI Stamping Settings**, the **Stamp on Submit** (`stamp_on_submit`) toggle controls automatic stamping. When enabled, the `on_submit` hook of the Sales Invoice override fires immediately after the document is submitted:
 
 ```python
+super().on_submit()
 settings: CFDIStampingSettings = frappe.get_single("CFDI Stamping Settings")
 if settings.stamp_on_submit:
     csd = frappe.get_value("Default CSD", {"company": self.company}, "csd")
+    # If stamping fails, do not block the submission of the sales invoice
     try:
         self.stamp_cfdi(csd)
     except Exception as e:
@@ -89,7 +91,7 @@ The table below shows how ERPNext fields are translated into CFDI 4.0 XML elemen
 | Customer SAT Tax Regime (`mx_tax_regime`) | `Receptor/RegimenFiscalReceptor` |
 | SAT CFDI Use (`mx_cfdi_use`) | `Receptor/UsoCFDI` |
 | SAT Payment Option (`mx_payment_option`) | `MetodoPago` |
-| SAT Payment Method (`mx_payment_mode`) | `FormaPago` |
+| SAT Payment Method code (`mx_payment_mode`) | `FormaPago` |
 | Currency | `Moneda` |
 | Conversion Rate (when not MXN) | `TipoCambio` |
 | Posting Date + Posting Time | `Fecha` |
@@ -97,7 +99,7 @@ The table below shows how ERPNext fields are translated into CFDI 4.0 XML elemen
 | Item UOM SAT Key | `Concepto/ClaveUnidad` |
 | Item Code | `Concepto/NoIdentificacion` |
 | Item Quantity | `Concepto/Cantidad` |
-| Item Unit Rate (before discount) | `Concepto/ValorUnitario` |
+| Item Rate + Discount Amount (pre-discount unit price) | `Concepto/ValorUnitario` |
 | Item Discount Amount | `Concepto/Descuento` |
 
 ---
@@ -152,4 +154,4 @@ Once a Sales Invoice is stamped, the **Download CFDI Files** button packages bot
 - `{invoice_name}_CFDI.xml` — the full SAT-stamped XML with `TimbreFiscalDigital`.
 - `{invoice_name}_CFDI.pdf` — the CFDI PDF representation.
 
-You can also use the **View PDF** button to open the PDF directly in the browser without downloading the archive.
+You can also use the **View PDF file** button (under **CFDI Actions**) to open the PDF directly in the browser without downloading the archive.
